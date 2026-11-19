@@ -5,7 +5,7 @@
 //   draws its own video into a canvas and sends the frames: only the video, whatever tab or window is in front on the
 //   PC. Sound stays on the PC. It follows the next video in the same tab.
 (() => {
-  const FPS = 30, MAX_W = 1280, QUALITY = 0.72;
+  const FPS = 30, MAX_W = 960, QUALITY = 0.72;   // the page encodes on its own (busy) thread: a smaller picture keeps up
   const onYouTube = /(^|\.)youtube\.com$/.test(location.hostname);
   const youTubeId = () => {
     const u = new URL(location.href);
