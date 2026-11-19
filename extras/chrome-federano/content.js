@@ -51,6 +51,7 @@
 
   // ---------------------------------------------------------------- frames of this tab's video
   let timer = 0, busy = false, canvas = null, ctx = null, tainted = false;
+  let reader = null, readerVideo = null, lastSent = 0;
 
   function startMirror() {
     if (tainted) return;
@@ -60,14 +61,54 @@
       port.onMessage.addListener((m) => { if (m && m.mirror === false) stopMirror(); else if (m && m.ready) busy = false; });
       port.onDisconnect.addListener(() => { port = null; stopMirror(); });
     } catch (_) { mirroring = false; return; }
-    // a tab playing sound is not throttled by Chrome, even in the background
-    timer = setInterval(sendFrame, Math.round(1000 / FPS));
+    if (!startFramePipe()) timer = setInterval(sendFrame, Math.round(1000 / FPS));
+  }
+
+  // The video's own decoded frames (captureStream + MediaStreamTrackProcessor) drive the capture. Unlike timers, they
+  // are not slowed to once a second when the tab is in the background or the window is covered.
+  function startFramePipe() {
+    const v = mainVideo();
+    if (!v || typeof MediaStreamTrackProcessor !== 'function' || typeof v.captureStream !== 'function') return false;
+    let track;
+    try { track = v.captureStream().getVideoTracks()[0]; } catch (_) { return false; }
+    if (!track) return false;
+    const r = new MediaStreamTrackProcessor({ track }).readable.getReader();
+    reader = r; readerVideo = v;
+    (async () => {
+      while (mirroring && reader === r) {
+        let res;
+        try { res = await r.read(); } catch (_) { break; }
+        if (res.done) break;
+        const frame = res.value;
+        const now = performance.now();
+        if (busy || !port || now - lastSent < 1000 / FPS) { frame.close(); continue; }
+        lastSent = now;
+        busy = true;
+        try { await encodeAndSend(frame, frame.displayWidth, frame.displayHeight); }
+        catch (e) { busy = false; if (e && e.name === 'SecurityError') { tainted = true; stopMirror(); } }
+        finally { frame.close(); }
+      }
+      // the track ended (next video in the same tab): start again on the current video
+      if (mirroring && reader === r) { reader = null; readerVideo = null; if (!startFramePipe()) timer = setInterval(sendFrame, Math.round(1000 / FPS)); }
+    })();
+    return true;
   }
 
   function stopMirror() {
     mirroring = false;
     clearInterval(timer); timer = 0; busy = false;
+    if (reader) { try { reader.cancel(); } catch (_) {} reader = null; readerVideo = null; }
     if (port) { try { port.disconnect(); } catch (_) {} port = null; }
+  }
+
+  async function encodeAndSend(source, srcW, srcH) {
+    const scale = Math.min(1, MAX_W / srcW);
+    const w = Math.round(srcW * scale), h = Math.round(srcH * scale);
+    if (!canvas || canvas.width !== w || canvas.height !== h) { canvas = new OffscreenCanvas(w, h); ctx = canvas.getContext('2d', { alpha: false }); }
+    ctx.drawImage(source, 0, 0, w, h);
+    const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: QUALITY });
+    const b64 = await toBase64(blob);
+    if (port) port.postMessage({ frame: b64 }); else busy = false;   // "ready" from the worker frees the next frame
   }
 
   function toBase64(blob) {
@@ -85,13 +126,7 @@
     if (!v || !v.videoWidth) return;
     busy = true;
     try {
-      const scale = Math.min(1, MAX_W / v.videoWidth);
-      const w = Math.round(v.videoWidth * scale), h = Math.round(v.videoHeight * scale);
-      if (!canvas || canvas.width !== w || canvas.height !== h) { canvas = new OffscreenCanvas(w, h); ctx = canvas.getContext('2d', { alpha: false }); }
-      ctx.drawImage(v, 0, 0, w, h);
-      const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: QUALITY });
-      const b64 = await toBase64(blob);
-      if (port) port.postMessage({ frame: b64 }); else busy = false;   // "ready" from the worker frees the next frame
+      await encodeAndSend(v, v.videoWidth, v.videoHeight);
     } catch (e) {
       busy = false;
       // a video from another site without permission (or protected, like Netflix) cannot be read: give up on it
@@ -100,5 +135,7 @@
   }
 
   setInterval(report, 1000);
+  // the next video in the same tab may be a new <video> element: follow it
+  setInterval(() => { if (mirroring && reader && readerVideo && mainVideo() !== readerVideo) { const r = reader; reader = null; try { r.cancel(); } catch (_) {} if (!startFramePipe()) timer = timer || setInterval(sendFrame, Math.round(1000 / FPS)); } }, 1000);
   for (const e of ['play', 'pause', 'loadeddata']) document.addEventListener(e, report, true);
 })();
