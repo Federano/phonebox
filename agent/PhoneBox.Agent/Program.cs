@@ -228,7 +228,7 @@ app.Use(async (ctx, next) =>
             && app.Services.GetRequiredService<SpotifyControl>().HasPendingState(ctx.Request.Query["state"]);
         // Federano: the Chrome extension (extras/chrome-federano) reports the YouTube video open on the PC; only
         // that one endpoint takes a chrome-extension:// origin, and it only stores a video id and a time.
-        var extensionReport = ctx.Request.Method == "POST" && (ctx.Request.Path == "/api/browser/youtube" || ctx.Request.Path == "/api/mirror/push")
+        var extensionReport = ctx.Request.Method == "POST" && (ctx.Request.Path == "/api/browser/youtube" || ctx.Request.Path == "/api/mirror/push" || ctx.Request.Path == "/api/mirror/start")
             && origin.StartsWith("chrome-extension://", StringComparison.Ordinal) && (host == "127.0.0.1" || host == "localhost");
         if (extensionReport) { await next(); return; }
         if ((host != "127.0.0.1" && host != "localhost") || (origin != "" && !SameOrigins.Contains(origin))
@@ -796,8 +796,8 @@ app.MapPost("/api/browser/youtube", (string? v, double? t, bool? playing, string
 });
 
 // Federano mirroring: the tablet starts it, then pulls JPEG frames (long poll: waits for a frame newer than "after").
-app.MapPost("/api/mirror/start", (MirrorCapture mirror) =>
-    mirror.Start() is { } error ? Results.Json(new { ok = false, error }) : Results.Json(new { ok = true, title = mirror.Title }));
+app.MapPost("/api/mirror/start", (int? tab, MirrorCapture mirror) =>
+    mirror.Start(tab) is { } error ? Results.Json(new { ok = false, error }) : Results.Json(new { ok = true, title = mirror.Title }));
 // Federano extension: a JPEG frame of the locked tab's video (body, at most 3 MB).
 app.MapPost("/api/mirror/push", async (int? tab, HttpRequest req, MirrorCapture mirror, CancellationToken ct) =>
 {
@@ -808,7 +808,8 @@ app.MapPost("/api/mirror/push", async (int? tab, HttpRequest req, MirrorCapture 
     return Results.Json(new { mirror = mirror.PushFrame(tb, ms.ToArray()) });
 });
 // Federano: "ver no tablet?" pop-up. The tablet polls the offer and answers it.
-app.MapGet("/api/mirror/offer", (MirrorOffers offers) => Results.Json(new { offer = offers.Current() }));
+app.MapGet("/api/mirror/offer", (MirrorOffers offers, MirrorCapture mirror) =>
+    Results.Json(new { offer = offers.Current(), open = mirror.TakeOpenRequest(), title = mirror.Title }));
 app.MapPost("/api/mirror/offer/answer", (string? id, bool? yes, MirrorOffers offers, MirrorCapture mirror) =>
 {
     if (string.IsNullOrEmpty(id)) return Results.BadRequest();

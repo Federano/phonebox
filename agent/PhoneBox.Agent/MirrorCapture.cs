@@ -37,6 +37,11 @@ public sealed class MirrorCapture(ILogger<MirrorCapture> log, MediaMonitor media
     private readonly SemaphoreSlim _frameReady = new(0, int.MaxValue);
     private System.Threading.Timer? _idleTimer;
 
+    private int _openOnTablet;
+
+    /// <summary>True once after mirroring was started from the PC (Federano icon in Chrome): the tablet opens it.</summary>
+    public bool TakeOpenRequest() => Interlocked.Exchange(ref _openOnTablet, 0) == 1 && Active;
+
     public bool Active { get { lock (_gate) return _session is not null || _browserTab is not null; } }
 
     /// <summary>True when the extension in <paramref name="tab"/> should send its video's frames.</summary>
@@ -62,9 +67,9 @@ public sealed class MirrorCapture(ILogger<MirrorCapture> log, MediaMonitor media
     /// itself, locked to that tab: other tabs or windows in front on the PC do not change it. Otherwise the media app's
     /// own window is captured (never whatever window is in front). Returns an error or null.
     /// </summary>
-    public string? Start()
+    public string? Start(int? requestedTab = null)
     {
-        if (browser.PlayingTab() is { } tab)
+        if ((requestedTab ?? browser.PlayingTab()) is { } tab)
         {
             lock (_gate)
             {
@@ -76,6 +81,7 @@ public sealed class MirrorCapture(ILogger<MirrorCapture> log, MediaMonitor media
                 _idleTimer ??= new System.Threading.Timer(_ => StopWhenIdle(), null, 1000, 1000);
             }
             log.LogInformation("mirror: browser tab {Tab} (video only)", tab);
+            if (requestedTab is not null) Interlocked.Exchange(ref _openOnTablet, 1);
             return null;
         }
         if (!Supported) return "Este Windows não suporta captura de janela.";

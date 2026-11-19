@@ -6,7 +6,8 @@ public sealed class MirrorCapture(ILogger<MirrorCapture> log, MediaMonitor media
     public bool Active => false;
     public string Title => "";
     public static bool Supported => false;
-    public string? Start() { _ = (log, media, browser); return "Espelhamento só funciona no Windows por enquanto."; }
+    public bool TakeOpenRequest() => false;
+    public string? Start(int? requestedTab = null) { _ = (log, media, browser); return "Espelhamento só funciona no Windows por enquanto."; }
     public void Stop() { }
     public bool WantsTab(int tab) => false;
     public bool PushFrame(int tab, byte[] jpeg) => false;

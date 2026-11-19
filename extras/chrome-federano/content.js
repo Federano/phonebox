@@ -34,7 +34,7 @@
     if (!v) { if (mirroring) stopMirror(); return; }
     const id = onYouTube ? youTubeId() : null;
     if (v.paused && !id && !mirroring) return;
-    const msg = { type: 'federano-video', playing: !v.paused };
+    const msg = { type: 'federano-video', playing: !v.paused, rect: videoRect(v) };
     if (id && /^[A-Za-z0-9_-]{11}$/.test(id)) {
       msg.v = id; msg.t = Math.max(0, v.currentTime || 0);
       msg.title = (document.title || '').replace(/^\(\d+\)\s*/, '').replace(/\s*-\s*YouTube$/, '');
@@ -43,10 +43,39 @@
       chrome.runtime.sendMessage(msg, (answer) => {
         if (chrome.runtime.lastError || !answer) return;
         if (answer.pause && !v.paused) v.pause();
-        if (answer.mirror && !mirroring) startMirror();
+        if (answer.mirror && !mirroring) begin();
         else if (!answer.mirror && mirroring) stopMirror();
+        else if (answer.tabCapture && pagePipeRunning()) stopPagePipe();   // the tab capture took over
       });
     } catch (_) { stopMirror(); /* extension reloaded: this page's script is orphaned until the tab reloads */ }
+  }
+
+  // where the video is in the page, as fractions (the tab capture crops its frames to it)
+  function videoRect(v) {
+    if (document.fullscreenElement) return { fx: 0, fy: 0, fw: 1, fh: 1 };
+    const r = v.getBoundingClientRect();
+    if (!innerWidth || !innerHeight) return null;
+    const x = Math.max(0, r.left), y = Math.max(0, r.top);
+    const w = Math.min(innerWidth, r.right) - x, h = Math.min(innerHeight, r.bottom) - y;
+    if (w <= 0 || h <= 0) return null;
+    // the picture inside the element (letterboxing), so the tablet shows the picture, not black bars
+    let px = x, py = y, pw = w, ph = h;
+    if (v.videoWidth && v.videoHeight && w === r.width && h === r.height) {
+      const ar = v.videoWidth / v.videoHeight;
+      if (w / h > ar) { pw = h * ar; px = x + (w - pw) / 2; } else { ph = w / ar; py = y + (h - ph) / 2; }
+    }
+    return { fx: px / innerWidth, fy: py / innerHeight, fw: pw / innerWidth, fh: ph / innerHeight };
+  }
+
+  // the tablet accepted: the tab capture if Chrome allows it (Federano icon clicked on this tab), else the page draws
+  function begin() {
+    mirroring = true;
+    try {
+      chrome.runtime.sendMessage({ type: 'federano-mirror-start' }, (answer) => {
+        if (chrome.runtime.lastError) { startMirror(); return; }
+        if (!(answer && answer.tabCapture) && mirroring) startMirror();
+      });
+    } catch (_) { startMirror(); }
   }
 
   // ---------------------------------------------------------------- frames of this tab's video
@@ -58,7 +87,7 @@
     mirroring = true;
     try {
       port = chrome.runtime.connect({ name: 'federano-frames' });
-      port.onMessage.addListener((m) => { if (m && m.mirror === false) stopMirror(); else if (m && m.ready) busy = false; });
+      port.onMessage.addListener((m) => { if (m && m.tabCapture) stopPagePipe(); else if (m && m.mirror === false) stopMirror(); else if (m && m.ready) busy = false; });
       port.onDisconnect.addListener(() => { port = null; stopMirror(); });
     } catch (_) { mirroring = false; return; }
     if (!startFramePipe()) timer = setInterval(sendFrame, Math.round(1000 / FPS));
@@ -96,6 +125,12 @@
 
   function stopMirror() {
     mirroring = false;
+    stopPagePipe();
+  }
+
+  const pagePipeRunning = () => !!(port || timer || reader);
+
+  function stopPagePipe() {
     clearInterval(timer); timer = 0; busy = false;
     if (reader) { try { reader.cancel(); } catch (_) {} reader = null; readerVideo = null; }
     if (port) { try { port.disconnect(); } catch (_) {} port = null; }

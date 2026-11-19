@@ -155,7 +155,11 @@ async function pollOffer() {
   if (!overlay && !offerEl && !document.body.classList.contains('night')) {
     try {
       const r = await fetch(`${API}/mirror/offer`, { cache: 'no-store', headers: PANEL_HEADERS });
-      if (r.ok) { const j = await r.json(); if (j.offer && !overlay && !offerEl) showOffer(j.offer); }
+      if (r.ok) {
+        const j = await r.json();
+        if (j.open && !overlay) openMirror(j.title);            // started on the PC (Federano icon in Chrome)
+        else if (j.offer && !overlay && !offerEl) showOffer(j.offer);
+      }
     } catch (_) {}
   }
   setTimeout(pollOffer, 2000);
