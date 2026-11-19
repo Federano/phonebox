@@ -227,7 +227,7 @@ app.Use(async (ctx, next) =>
             && app.Services.GetRequiredService<SpotifyControl>().HasPendingState(ctx.Request.Query["state"]);
         // Federano: the Chrome extension (extras/chrome-federano) reports the YouTube video open on the PC; only
         // that one endpoint takes a chrome-extension:// origin, and it only stores a video id and a time.
-        var extensionReport = ctx.Request.Method == "POST" && ctx.Request.Path == "/api/browser/youtube"
+        var extensionReport = ctx.Request.Method == "POST" && (ctx.Request.Path == "/api/browser/youtube" || ctx.Request.Path == "/api/mirror/push")
             && origin.StartsWith("chrome-extension://", StringComparison.Ordinal) && (host == "127.0.0.1" || host == "localhost");
         if (extensionReport) { await next(); return; }
         if ((host != "127.0.0.1" && host != "localhost") || (origin != "" && !SameOrigins.Contains(origin))
@@ -785,17 +785,27 @@ app.MapPost("/api/skills/run", async (string? text, SkillEngine skills) =>
 
 // Federano Chrome extension: the YouTube video open on the PC. The answer tells it to pause when the video was
 // taken to the tablet.
-app.MapPost("/api/browser/youtube", (string? v, double? t, bool? playing, string? title, int? x, int? y, int? w, int? h, YouTubeTracker yt) =>
+app.MapPost("/api/browser/youtube", (string? v, double? t, bool? playing, string? title, int? x, int? y, int? w, int? h, int? tab, YouTubeTracker yt, MirrorCapture mirror) =>
 {
+    if (tab is { } tb) yt.ReportTab(tb, playing == true);
     // the playing video's rectangle in the browser window, for mirroring (any site); nothing else is kept
     if (playing == true && x is { } rx && y is { } ry && w is { } rw && h is { } rh) yt.UpdateRect(rx, ry, rw, rh);
     var pause = YouTubeTracker.ValidId(v) && t is { } time && yt.Update(v!, time, playing == true, title);
-    return Results.Json(new { pause });
+    return Results.Json(new { pause, mirror = tab is { } mt && mirror.WantsTab(mt) });
 });
 
 // Federano mirroring: the tablet starts it, then pulls JPEG frames (long poll: waits for a frame newer than "after").
 app.MapPost("/api/mirror/start", (MirrorCapture mirror) =>
     mirror.Start() is { } error ? Results.Json(new { ok = false, error }) : Results.Json(new { ok = true, title = mirror.Title }));
+// Federano extension: a JPEG frame of the locked tab's video (body, at most 3 MB).
+app.MapPost("/api/mirror/push", async (int? tab, HttpRequest req, MirrorCapture mirror, CancellationToken ct) =>
+{
+    if (tab is not { } tb || !mirror.WantsTab(tb)) return Results.Json(new { mirror = false });
+    using var ms = new MemoryStream();
+    await req.Body.CopyToAsync(ms, ct);
+    if (ms.Length > 3_000_000) return Results.BadRequest();
+    return Results.Json(new { mirror = mirror.PushFrame(tb, ms.ToArray()) });
+});
 app.MapPost("/api/mirror/stop", (MirrorCapture mirror) => { mirror.Stop(); return Results.Json(new { ok = true }); });
 app.MapGet("/api/mirror/frame", async (long? after, HttpResponse res, MirrorCapture mirror, CancellationToken ct) =>
 {

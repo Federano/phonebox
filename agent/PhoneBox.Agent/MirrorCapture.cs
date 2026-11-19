@@ -29,6 +29,7 @@ public sealed class MirrorCapture(ILogger<MirrorCapture> log, MediaMonitor media
     private IntPtr _hwnd;
     private string _title = "";
     private bool _browserWindow;
+    private int? _browserTab;      // browser mode: the tab whose video the extension sends
     private long _lastAsk;
     private int _encoding;
     private byte[]? _jpeg;
@@ -36,14 +37,47 @@ public sealed class MirrorCapture(ILogger<MirrorCapture> log, MediaMonitor media
     private readonly SemaphoreSlim _frameReady = new(0, int.MaxValue);
     private System.Threading.Timer? _idleTimer;
 
-    public bool Active { get { lock (_gate) return _session is not null; } }
+    public bool Active { get { lock (_gate) return _session is not null || _browserTab is not null; } }
+
+    /// <summary>True when the extension in <paramref name="tab"/> should send its video's frames.</summary>
+    public bool WantsTab(int tab) { lock (_gate) return _browserTab == tab; }
+
+    /// <summary>A frame of the locked tab's video, sent by the extension.</summary>
+    public bool PushFrame(int tab, byte[] jpeg)
+    {
+        lock (_gate)
+        {
+            if (_browserTab != tab || jpeg.Length < 4 || jpeg[0] != 0xFF || jpeg[1] != 0xD8) return false;
+            _jpeg = jpeg; _seq++;
+        }
+        _frameReady.Release();
+        return true;
+    }
     public string Title { get { lock (_gate) return _title; } }
 
     public static bool Supported => GraphicsCaptureSession.IsSupported();
 
-    /// <summary>Starts capturing the media app's window (or the foreground window). Returns an error or null.</summary>
+    /// <summary>
+    /// Starts mirroring. A video playing in the browser (reported by the Federano extension) is sent by the extension
+    /// itself, locked to that tab: other tabs or windows in front on the PC do not change it. Otherwise the media app's
+    /// own window is captured (never whatever window is in front). Returns an error or null.
+    /// </summary>
     public string? Start()
     {
+        if (browser.PlayingTab() is { } tab)
+        {
+            lock (_gate)
+            {
+                _lastAsk = Stopwatch.GetTimestamp();
+                if (_browserTab == tab) return null;
+                StopLocked();
+                _browserTab = tab;
+                _title = media.Snapshot()?.Title ?? "";
+                _idleTimer ??= new System.Threading.Timer(_ => StopWhenIdle(), null, 1000, 1000);
+            }
+            log.LogInformation("mirror: browser tab {Tab} (video only)", tab);
+            return null;
+        }
         if (!Supported) return "Este Windows não suporta captura de janela.";
         var (hwnd, title) = FindMediaWindow(media.SourceAppId);
         if (hwnd == IntPtr.Zero) return "Não achei a janela do player no PC.";
@@ -88,7 +122,7 @@ public sealed class MirrorCapture(ILogger<MirrorCapture> log, MediaMonitor media
             {
                 _lastAsk = Stopwatch.GetTimestamp();
                 if (_jpeg is not null && _seq > after) return (_jpeg, _seq);
-                if (_session is null) return null;
+                if (_session is null && _browserTab is null) return null;
             }
             var left = TimeSpan.FromSeconds((until - Stopwatch.GetTimestamp()) / (double)Stopwatch.Frequency);
             if (left <= TimeSpan.Zero) return null;
@@ -100,7 +134,7 @@ public sealed class MirrorCapture(ILogger<MirrorCapture> log, MediaMonitor media
     {
         lock (_gate)
         {
-            if (_session is not null && Stopwatch.GetElapsedTime(_lastAsk) > Idle) { log.LogInformation("mirror: stopped (tablet idle)"); StopLocked(); }
+            if ((_session is not null || _browserTab is not null) && Stopwatch.GetElapsedTime(_lastAsk) > Idle) { log.LogInformation("mirror: stopped (tablet idle)"); StopLocked(); }
         }
     }
 
@@ -109,7 +143,7 @@ public sealed class MirrorCapture(ILogger<MirrorCapture> log, MediaMonitor media
         try { if (_pool is not null) _pool.FrameArrived -= OnFrame; } catch { }
         try { _session?.Dispose(); } catch { }
         try { _pool?.Dispose(); } catch { }
-        _session = null; _pool = null; _item = null; _hwnd = IntPtr.Zero; _jpeg = null;
+        _session = null; _pool = null; _item = null; _hwnd = IntPtr.Zero; _jpeg = null; _browserTab = null;
     }
 
     private void OnFrame(Direct3D11CaptureFramePool sender, object args)
@@ -208,8 +242,7 @@ public sealed class MirrorCapture(ILogger<MirrorCapture> log, MediaMonitor media
                 if (best.Hwnd != IntPtr.Zero) return (best.Hwnd, best.Title);
             }
         }
-        var fg = GetForegroundWindow();
-        return fg == IntPtr.Zero ? (IntPtr.Zero, "") : (fg, WindowTitle(fg));
+        return (IntPtr.Zero, "");
     }
 
     internal static bool IsBrowser(string? exe) =>

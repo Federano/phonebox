@@ -67,6 +67,21 @@ public sealed partial class YouTubeTracker
             return _rect is { } r && Stopwatch.GetElapsedTime(r.At) < TimeSpan.FromSeconds(4) ? (r.X, r.Y, r.Width, r.Height) : null;
     }
 
+    // ---- Federano mirroring: the browser tab playing a video (the extension sends that tab's frames)
+    private (int Tab, long At)? _playingTab;
+
+    public void ReportTab(int tab, bool playing)
+    {
+        lock (_gate) if (playing && tab >= 0) _playingTab = (tab, Stopwatch.GetTimestamp());
+    }
+
+    /// <summary>The tab that reported a playing video in the last few seconds.</summary>
+    public int? PlayingTab()
+    {
+        lock (_gate)
+            return _playingTab is { } t && Stopwatch.GetElapsedTime(t.At) < TimeSpan.FromSeconds(4) ? t.Tab : null;
+    }
+
     public static string WatchUrl(string videoId, int seconds) =>
         $"https://www.youtube.com/watch?v={videoId}" + (seconds > 0 ? $"&t={seconds}s" : "");
 
