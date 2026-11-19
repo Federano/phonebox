@@ -60,13 +60,10 @@ async function start(streamId, tab, rect) {
       const sw = Math.min(fw - sx, Math.round(r.fw * cw)), sh = Math.min(fh - sy, Math.round(r.fh * ch));
       const scale = Math.min(1, MAX_W / sw);
       const w = Math.max(2, Math.round(sw * scale)), h = Math.max(2, Math.round(sh * scale));
-      if (!canvas || canvas.width !== w || canvas.height !== h) { canvas = new OffscreenCanvas(w, h); ctx = canvas.getContext('2d', { alpha: false }); }
       const t0 = performance.now();
-      ctx.drawImage(frame, sx, sy, sw, sh, 0, 0, w, h);
-      frame.close();
-      const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: QUALITY });
+      const jpeg = await encode(frame, sx, sy, sw, sh, w, h);   // the worker closes the frame
       const t1 = performance.now();
-      const resp = await fetch(`${AGENT}/mirror/push?tab=${tab}${stats}`, { method: 'POST', body: blob, headers: { 'Content-Type': 'image/jpeg' }, cache: 'no-store' });
+      const resp = await fetch(`${AGENT}/mirror/push?tab=${tab}${stats}`, { method: 'POST', body: jpeg, headers: { 'Content-Type': 'image/jpeg' }, cache: 'no-store' });
       stats = '';
       encMs += t1 - t0; postMs += performance.now() - t1; sent++;
       const j = resp.ok ? await resp.json() : { mirror: false };
@@ -76,6 +73,26 @@ async function start(streamId, tab, rect) {
     } finally { busy = false; }
   }
   if (session === s) stop();
+}
+
+// JPEG encoding in a worker: in this background page Chrome delays canvas encoding by about a second per frame
+let worker = null, nextId = 0;
+const pending = new Map();
+function encode(frame, sx, sy, sw, sh, w, h) {
+  if (!worker) {
+    worker = new Worker('encoder.js');
+    worker.onmessage = (e) => {
+      const p = pending.get(e.data.id);
+      if (!p) return;
+      pending.delete(e.data.id);
+      if (e.data.error) p.reject(new Error(e.data.error)); else p.resolve(e.data.buf);
+    };
+  }
+  const id = ++nextId;
+  return new Promise((resolve, reject) => {
+    pending.set(id, { resolve, reject });
+    worker.postMessage({ id, frame, sx, sy, sw, sh, w, h, quality: QUALITY }, [frame]);
+  });
 }
 
 function stop() {
