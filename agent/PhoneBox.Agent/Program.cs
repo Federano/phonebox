@@ -75,6 +75,7 @@ AddMonitor<MediaMonitor>(builder.Services);
 builder.Services.AddSingleton<SkillEngine>();
 builder.Services.AddSingleton<YouTubeTracker>();
 builder.Services.AddSingleton<MirrorCapture>();
+builder.Services.AddSingleton<MirrorOffers>();
 AddMonitor<QuotaMonitor>(builder.Services);
 AddMonitor<ProcessMonitor>(builder.Services);
 AddMonitor<SessionMonitor>(builder.Services);
@@ -805,6 +806,14 @@ app.MapPost("/api/mirror/push", async (int? tab, HttpRequest req, MirrorCapture 
     await req.Body.CopyToAsync(ms, ct);
     if (ms.Length > 3_000_000) return Results.BadRequest();
     return Results.Json(new { mirror = mirror.PushFrame(tb, ms.ToArray()) });
+});
+// Federano: "ver no tablet?" pop-up. The tablet polls the offer and answers it.
+app.MapGet("/api/mirror/offer", (MirrorOffers offers) => Results.Json(new { offer = offers.Current() }));
+app.MapPost("/api/mirror/offer/answer", (string? id, bool? yes, MirrorOffers offers, MirrorCapture mirror) =>
+{
+    if (string.IsNullOrEmpty(id)) return Results.BadRequest();
+    var error = offers.Answer(id, yes == true);
+    return Results.Json(new { ok = error is null, error, mirror = yes == true && error is null, title = mirror.Title });
 });
 app.MapPost("/api/mirror/stop", (MirrorCapture mirror) => { mirror.Stop(); return Results.Json(new { ok = true }); });
 app.MapGet("/api/mirror/frame", async (long? after, HttpResponse res, MirrorCapture mirror, CancellationToken ct) =>

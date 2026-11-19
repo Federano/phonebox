@@ -15,6 +15,7 @@ import './widgets/controls.js';
 import './widgets/console.js';
 import './widgets/dictate.js';
 import './widgets/federano.js';
+import './mirror.js';
 import './widgets/camera.js';
 import './widgets/spectrum.js';
 

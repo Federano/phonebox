@@ -17,6 +17,8 @@ public sealed class AgentConfig
     public NightConfig Night { get; set; } = new();
     public DisplayConfig Display { get; set; } = new();
     public LanConfig Lan { get; set; } = new();
+    /// <summary>Federano assistant options.</summary>
+    public FederanoConfig Federano { get; set; } = new();
     public UpdateConfig Updates { get; set; } = new();
     public ClaudeConfig Claude { get; set; } = new();
     /// <summary>Cursor agent-transcript sessions on the AI sessions widget (off by default).</summary>
@@ -195,6 +197,14 @@ public sealed class DisplayConfig
     public int MinDwellSec { get; set; } = 15;
     /// <summary>A rule keeps its page at most this many minutes, then the idle return may take over; 0 = as long as the rule lasts.</summary>
     public int HoldMaxMin { get; set; } = 30;
+}
+
+public sealed class FederanoConfig
+{
+    /// <summary>When a video starts on the PC, ask on the tablet whether to show it there.</summary>
+    public bool MirrorOffer { get; set; } = true;
+    /// <summary>Seconds the "Ver no tablet?" pop-up stays without an answer.</summary>
+    public int MirrorOfferSeconds { get; set; } = 5;
 }
 
 public sealed class LanConfig

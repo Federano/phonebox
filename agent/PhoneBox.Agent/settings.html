@@ -793,6 +793,12 @@ nav a.on::before { color: var(--accent); }
         <div id="phoneList"><p class="hint" data-i18n="s.phones.empty">No phone has connected yet.</p></div>
       </div>
       <div class="card">
+        <h3>Federano</h3>
+        <div class="row" style="margin-bottom:8px"><label class="switch"><input type="checkbox" data-bind="federano.mirrorOffer"><span></span></label> <span>Quando um vídeo começar no PC, perguntar no tablet se quero ver lá</span></div>
+        <div class="field" style="max-width:420px"><label>O aviso some sozinho depois de (segundos)</label><input type="number" min="2" max="600" data-bind="federano.mirrorOfferSeconds" data-type="int"></div>
+        <p class="hint" style="margin:8px 0 0">Cada vídeo é oferecido uma vez: depois de "Agora não" (ou sem resposta) o Federano não pergunta de novo sobre ele.</p>
+      </div>
+      <div class="card">
         <h3 data-i18n="s.wifi.title">Wi-Fi &amp; Tailscale</h3>
         <div class="row" style="margin-bottom:8px"><label class="switch"><input type="checkbox" data-bind="lan.enabled"><span></span></label> <span data-i18n="s.wifi.enable">Let the phone connect without the USB cable</span></div>
         <p class="hint" style="margin:0 0 12px" data-i18n-html="s.wifi.lead">Pair a phone by plugging it in once over USB after turning this on (and restarting), or without a cable:
@@ -3202,7 +3208,7 @@ async function loadInfo() {
 // The form reads every section it binds and renders, so a config without one — an older export, or a
 // hand-trimmed paste in Apply JSON — gets the same defaults a fresh load does before anything renders.
 function fillDefaults() {
-  cfg.pages = fitPages(cfg.pages); cfg.shortcuts ??= []; cfg.rules ??= []; cfg.display ??= {}; cfg.night = { enabled: true, start: '00:30', end: '07:30', brightness: 0.02, ...cfg.night }; cfg.weather ??= {}; cfg.weather.unit ??= 'celsius'; cfg.weather.model ??= ''; cfg.photos ??= { folder: '', subfolders: true }; cfg.lan ??= { enabled: false, port: 8776 }; cfg.updates ??= { auto: true, repo: 'ersinkoc/phonebox' }; cfg.claude ??= { phoneApprovals: true, timeoutSec: 90, onlyWhenAway: false, shareSessionTitles: false, shareConversation: false };
+  cfg.pages = fitPages(cfg.pages); cfg.shortcuts ??= []; cfg.rules ??= []; cfg.display ??= {}; cfg.night = { enabled: true, start: '00:30', end: '07:30', brightness: 0.02, ...cfg.night }; cfg.weather ??= {}; cfg.weather.unit ??= 'celsius'; cfg.weather.model ??= ''; cfg.photos ??= { folder: '', subfolders: true }; cfg.lan ??= { enabled: false, port: 8776 }; cfg.federano = { mirrorOffer: true, mirrorOfferSeconds: 5, ...cfg.federano }; cfg.updates ??= { auto: true, repo: 'ersinkoc/phonebox' }; cfg.claude ??= { phoneApprovals: true, timeoutSec: 90, onlyWhenAway: false, shareSessionTitles: false, shareConversation: false };
   cfg.codexBar ??= { providers: ['claude', 'codex', 'antigravity'], rotate: true, pageSize: 2, rotateInterval: 8 };
   for (const [k, v] of Object.entries({ language: 'auto', hour12: false, idleReturnSec: 90, switchCountdownSec: 3, touchGraceSec: 20, minDwellSec: 15, holdMaxMin: 30, keepAwake: true,
     showSeconds: true, vibrate: true, finishToast: true, volumeKeys: true, artTint: true, proximityWake: true, orientation: 'landscape', theme: 'default', accent: '#2dd4bf' })) cfg.display[k] ??= v;
