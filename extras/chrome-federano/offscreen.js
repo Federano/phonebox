@@ -3,7 +3,7 @@
 // Each frame is cropped to the video's rectangle, encoded as JPEG and sent to the Federano agent on this PC.
 // Video only: the tab's sound keeps playing on the PC as usual.
 const AGENT = 'http://127.0.0.1:8775/api';
-const FPS = 30, MAX_W = 1280, QUALITY = 0.8;
+const FPS = 30, MAX_W = 1280, QUALITY = 0.72;
 
 let session = null;   // { tab, stream, reader, rect }
 
@@ -64,17 +64,32 @@ async function start(streamId, tab, rect) {
       const w = Math.max(2, Math.round(sw * scale)), h = Math.max(2, Math.round(sh * scale));
       const t0 = performance.now();
       const jpeg = await encode(frame, sx, sy, sw, sh, w, h);   // the worker closes the frame
-      const t1 = performance.now();
-      const resp = await fetch(`${AGENT}/mirror/push?tab=${tab}&ts=${ts}${stats}`, { method: 'POST', body: jpeg, headers: { 'Content-Type': 'image/jpeg' }, cache: 'no-store' });
+      encMs += performance.now() - t0; sent++;
+      // the send runs in parallel with the next encode; only the newest frame waits for the link
+      send(s, `${AGENT}/mirror/push?tab=${tab}&ts=${ts}${stats}`, jpeg, (ms) => { postMs += ms; });
       stats = '';
-      encMs += t1 - t0; postMs += performance.now() - t1; sent++;
-      const j = resp.ok ? await resp.json() : { mirror: false };
-      if (j.mirror !== true) { stop(); break; }   // the tablet closed the mirror
     } catch (_) {
       try { frame.close(); } catch (__) {}
     } finally { busy = false; }
   }
   if (session === s) stop();
+}
+
+// One frame on its way to the agent at a time; a newer one waits and replaces any older waiting frame.
+let inFlight = false, waiting = null;
+function send(s, url, body, onDone) {
+  if (inFlight) { waiting = { s, url, body, onDone }; return; }
+  inFlight = true;
+  const t = performance.now();
+  fetch(url, { method: 'POST', body, headers: { 'Content-Type': 'image/jpeg' }, cache: 'no-store' })
+    .then((r) => (r.ok ? r.json() : { mirror: false }))
+    .then((j) => { onDone(performance.now() - t); if (j.mirror !== true && session === s) stop(); })   // the tablet closed it
+    .catch(() => {})
+    .finally(() => {
+      inFlight = false;
+      const next = waiting; waiting = null;
+      if (next && session === next.s) send(next.s, next.url, next.body, next.onDone);
+    });
 }
 
 // JPEG encoding in a worker: in this background page Chrome delays canvas encoding by about a second per frame

@@ -85,9 +85,11 @@ function badge(text, color) {
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'federano-frames' || !port.sender || !port.sender.tab) return;
   const tab = port.sender.tab.id;
-  port.onMessage.addListener(async (m) => {
-    if (!m || typeof m.frame !== 'string') return;
-    if ((await getCaptured()) === tab) { try { port.postMessage({ tabCapture: true }); } catch (_) {} return; }   // tab capture took over
+  // one frame on its way to the agent at a time; a newer one waits and replaces an older waiting frame. The page is
+  // told "ready" as soon as its frame is taken, so it encodes the next one while this one travels.
+  let inFlight = false, waiting = null, stopped = false;
+  const post = async (m) => {
+    inFlight = true;
     let mirror = true;
     try {
       const bin = atob(m.frame);
@@ -96,6 +98,15 @@ chrome.runtime.onConnect.addListener((port) => {
       const r = await fetch(`${AGENT}/mirror/push?tab=${tab}&ts=${Number(m.ts) || 0}`, { method: 'POST', body: bytes, headers: { 'Content-Type': 'image/jpeg' }, cache: 'no-store' });
       mirror = r.ok ? (await r.json()).mirror === true : false;
     } catch (_) { mirror = false; }
-    try { port.postMessage(mirror ? { ready: true } : { mirror: false }); } catch (_) {}
+    inFlight = false;
+    if (!mirror) { stopped = true; waiting = null; try { port.postMessage({ mirror: false }); } catch (_) {} return; }
+    const next = waiting; waiting = null;
+    if (next) post(next);
+  };
+  port.onMessage.addListener(async (m) => {
+    if (!m || typeof m.frame !== 'string' || stopped) return;
+    if ((await getCaptured()) === tab) { try { port.postMessage({ tabCapture: true }); } catch (_) {} return; }   // tab capture took over
+    try { port.postMessage({ ready: true }); } catch (_) {}
+    if (inFlight) waiting = m; else post(m);
   });
 });
