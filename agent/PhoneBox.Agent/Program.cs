@@ -72,6 +72,7 @@ builder.Services.AddSingleton<Dictation>();
 builder.Services.AddSingleton<SpectrumAnalyzer>();
 AddMonitor<SystemMonitor>(builder.Services);
 AddMonitor<MediaMonitor>(builder.Services);
+builder.Services.AddSingleton<SkillEngine>();
 AddMonitor<QuotaMonitor>(builder.Services);
 AddMonitor<ProcessMonitor>(builder.Services);
 AddMonitor<SessionMonitor>(builder.Services);
@@ -768,6 +769,11 @@ app.MapGet("/api/phones", (ConfigStore cfg) =>
         pages = c.Phones.FirstOrDefault(p => p.Id == id)?.Pages,
     }).OrderByDescending(p => p.lastSeen ?? 0));
 });
+
+// Federano skills: GET lists them, POST runs the one whose trigger matches what was said/typed.
+app.MapGet("/api/skills", (SkillEngine skills) => Results.Json(skills.Load()));
+app.MapPost("/api/skills/run", async (SkillRequest req, SkillEngine skills) =>
+    string.IsNullOrWhiteSpace(req.Text) ? Results.BadRequest() : Results.Json(await skills.RunAsync(req.Text)));
 
 app.MapGet("/api/art", (MediaMonitor media) =>
     media.Art is { } art ? Results.File(art.Bytes, art.Mime) : Results.NotFound());

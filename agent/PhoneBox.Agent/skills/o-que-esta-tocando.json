@@ -1,0 +1,8 @@
+{
+  // Federano: "o que está tocando?"
+  "name": "O que está tocando",
+  "triggers": ["o que esta tocando", "o que ta tocando", "que musica e essa", "que video e esse", "o que esta passando"],
+  "action": "media.now",
+  "reply": "Está {state} \"{title}\" de {artist}, no {app}.",
+  "replyEmpty": "Nada tocando no PC agora."
+}

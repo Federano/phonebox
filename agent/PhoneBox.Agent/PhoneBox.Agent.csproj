@@ -50,6 +50,7 @@
   <ItemGroup>
     <!-- every release zip: it bundles the .NET runtime (and NAudio on Windows) -->
     <None Update="THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="skills/*.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
