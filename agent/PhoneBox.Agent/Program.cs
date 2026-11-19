@@ -786,8 +786,10 @@ app.MapPost("/api/skills/run", async (string? text, SkillEngine skills) =>
 
 // Federano Chrome extension: the YouTube video open on the PC. The answer tells it to pause when the video was
 // taken to the tablet.
-app.MapPost("/api/browser/youtube", (string? v, double? t, bool? playing, string? title, int? x, int? y, int? w, int? h, int? tab, YouTubeTracker yt, MirrorCapture mirror) =>
+app.MapPost("/api/browser/youtube", (string? v, double? t, bool? playing, string? title, int? x, int? y, int? w, int? h, int? tab,
+    double? rfx, double? rfy, double? rfw, double? rfh, double? rar, YouTubeTracker yt, MirrorCapture mirror) =>
 {
+    if (tab is { } rt && rfx is { } a && rfy is { } b && rfw is { } c && rfh is { } d && rar is { } e) yt.UpdatePageRect(rt, new(a, b, c, d, e));
     if (tab is { } tb) yt.ReportTab(tb, playing == true);
     // the playing video's rectangle in the browser window, for mirroring (any site); nothing else is kept
     if (playing == true && x is { } rx && y is { } ry && w is { } rw && h is { } rh) yt.UpdateRect(rx, ry, rw, rh);
@@ -799,16 +801,20 @@ app.MapPost("/api/browser/youtube", (string? v, double? t, bool? playing, string
 app.MapPost("/api/mirror/start", (int? tab, MirrorCapture mirror) =>
     mirror.Start(tab) is { } error ? Results.Json(new { ok = false, error }) : Results.Json(new { ok = true, title = mirror.Title }));
 // Federano extension: a JPEG frame of the locked tab's video (body, at most 3 MB).
-app.MapPost("/api/mirror/push", async (int? tab, long? ts, HttpRequest req, MirrorCapture mirror, CancellationToken ct) =>
+app.MapPost("/api/mirror/push", async (int? tab, long? ts, bool? probe, HttpRequest req, MirrorCapture mirror, YouTubeTracker yt, CancellationToken ct) =>
 {
     if (tab is not { } tb || !mirror.WantsTab(tb)) return Results.Json(new { mirror = false });
+    // the answer carries the video's rectangle in that tab, so the tab capture crops to just the video
+    var pr = yt.PageRectOf(tb);
+    object? rect = pr is null ? null : new { fx = pr.Fx, fy = pr.Fy, fw = pr.Fw, fh = pr.Fh, ar = pr.Ar };
+    if (probe == true) return Results.Json(new { mirror = true, rect });
     if (req.Query.ContainsKey("src")) app.Logger.LogInformation("mirror stats: {Stats}", req.QueryString.Value);
     using var ms = new MemoryStream();
     await req.Body.CopyToAsync(ms, ct);
     if (ms.Length > 3_000_000) return Results.BadRequest();
     var ok = mirror.PushFrame(tb, ms.ToArray(), ts ?? 0);
     if (mirror.Latency.TakeSummary(TimeSpan.FromSeconds(3)) is { } lat) app.Logger.LogInformation("mirror latency: {Latency}", lat);
-    return Results.Json(new { mirror = ok });
+    return Results.Json(new { mirror = ok, rect });
 });
 // Federano: "ver no tablet?" pop-up. The tablet polls the offer and answers it.
 app.MapGet("/api/mirror/offer", (MirrorOffers offers, MirrorCapture mirror) =>

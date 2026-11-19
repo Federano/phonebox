@@ -30,6 +30,18 @@ async function start(streamId, tab, rect) {
   const reader = new MediaStreamTrackProcessor({ track, maxBufferSize: 1 }).readable.getReader();
   const s = { tab, stream, reader, rect: rect || null, started: performance.now() };
   session = s;
+  // ask the agent where the video is before the first frame (the page reports it there every second)
+  const probe = async () => {
+    for (let i = 0; i < 20 && session === s && !s.rect; i++) {
+      try {
+        const r = await fetch(`${AGENT}/mirror/push?tab=${tab}&probe=true`, { method: 'POST', cache: 'no-store' });
+        const j = r.ok ? await r.json() : {};
+        if (j.rect) s.rect = j.rect;
+      } catch (_) {}
+      if (!s.rect) await new Promise((res) => setTimeout(res, 250));
+    }
+  };
+  probe();
   let canvas = null, ctx = null, busy = false, last = 0;
   // measurements, sent with the frames so the agent can log where time goes
   let got = 0, sent = 0, encMs = 0, postMs = 0, statFrom = performance.now(), stats = '';
@@ -83,7 +95,11 @@ function send(s, url, body, onDone) {
   const t = performance.now();
   fetch(url, { method: 'POST', body, headers: { 'Content-Type': 'image/jpeg' }, cache: 'no-store' })
     .then((r) => (r.ok ? r.json() : { mirror: false }))
-    .then((j) => { onDone(performance.now() - t); if (j.mirror !== true && session === s) stop(); })   // the tablet closed it
+    .then((j) => {
+      onDone(performance.now() - t);
+      if (j.rect && session === s) s.rect = j.rect;           // where the video is in the tab (from the agent)
+      if (j.mirror !== true && session === s) stop();         // the tablet closed it
+    })
     .catch(() => {})
     .finally(() => {
       inFlight = false;

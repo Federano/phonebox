@@ -43,6 +43,10 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   const q = new URLSearchParams({ playing: String(!!msg.playing) });
   if (tab !== null) q.set('tab', String(tab));
   if (msg.v) { q.set('v', msg.v); q.set('t', String(msg.t)); q.set('title', String(msg.title || '').slice(0, 200)); }
+  const r = msg.rect;
+  if (r && [r.fx, r.fy, r.fw, r.fh, r.ar].every(Number.isFinite)) {
+    q.set('rfx', r.fx.toFixed(4)); q.set('rfy', r.fy.toFixed(4)); q.set('rfw', r.fw.toFixed(4)); q.set('rfh', r.fh.toFixed(4)); q.set('rar', r.ar.toFixed(4));
+  }
   Promise.all([fetch(`${AGENT}/browser/youtube?${q}`, { method: 'POST', cache: 'no-store' }).then((r) => (r.ok ? r.json() : {})), getCaptured()])
     .then(([j, captured]) => reply({ pause: j.pause === true, mirror: j.mirror === true, tabCapture: captured === tab }))
     .catch(() => reply({ pause: false, mirror: false, tabCapture: false }));   // Federano not running: try again later

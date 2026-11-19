@@ -82,6 +82,22 @@ public sealed partial class YouTubeTracker
             return _playingTab is { } t && Stopwatch.GetElapsedTime(t.At) < TimeSpan.FromSeconds(4) ? t.Tab : null;
     }
 
+    // ---- the video's rectangle in each tab, as fractions of the page (fx, fy, fw, fh) and the page's shape (ar)
+    public sealed record PageRect(double Fx, double Fy, double Fw, double Fh, double Ar);
+    private readonly Dictionary<int, PageRect> _pageRects = [];
+
+    public void UpdatePageRect(int tab, PageRect r)
+    {
+        if (r.Fw <= 0 || r.Fh <= 0 || r.Fw > 1.01 || r.Fh > 1.01 || r.Ar <= 0) return;
+        lock (_gate)
+        {
+            if (_pageRects.Count > 50 && !_pageRects.ContainsKey(tab)) _pageRects.Clear();
+            _pageRects[tab] = r;
+        }
+    }
+
+    public PageRect? PageRectOf(int tab) { lock (_gate) return _pageRects.GetValueOrDefault(tab); }
+
     public static string WatchUrl(string videoId, int seconds) =>
         $"https://www.youtube.com/watch?v={videoId}" + (seconds > 0 ? $"&t={seconds}s" : "");
 

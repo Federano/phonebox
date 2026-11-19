@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Federano",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Ajuda o Federano (no seu PC) a espelhar no tablet só o vídeo que está tocando, e a abrir vídeos do YouTube no tablet.",
   "permissions": ["tabCapture", "offscreen", "storage"],
   "host_permissions": [
