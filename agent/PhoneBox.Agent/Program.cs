@@ -836,7 +836,8 @@ app.MapPost("/api/mirror/stop", (MirrorCapture mirror) => { mirror.Stop(); retur
 app.MapGet("/api/mirror/frame", async (long? after, HttpResponse res, MirrorCapture mirror, CancellationToken ct) =>
 {
     var f = await mirror.NextFrameAsync(after ?? 0, TimeSpan.FromSeconds(2), ct);
-    if (f is not { } frame) return mirror.Active ? Results.StatusCode(204) : Results.StatusCode(410);
+    // no new frame yet (a playlist loading the next video): a small JSON answer, so the tablet just asks again
+    if (f is not { } frame) return mirror.Active ? Results.Json(new { wait = true }) : Results.StatusCode(410);
     res.Headers["X-Seq"] = frame.Seq.ToString(System.Globalization.CultureInfo.InvariantCulture);
     res.Headers.CacheControl = "no-store";
     return Results.Bytes(frame.Jpeg, "image/jpeg");

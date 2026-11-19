@@ -25,7 +25,7 @@ export function openMirror(title) {
   el.append(img, label, fps, close);
   document.body.append(el);
 
-  let alive = true, shown = 0, want = 0, lastUrl = '', frames = 0, failures = 0;
+  let alive = true, shown = 0, want = 0, lastUrl = '', frames = 0, lastOk = performance.now();
   let dl = 0, dlN = 0, statFrames = 0, statFrom = performance.now();
   const fpsTimer = setInterval(() => {
     fps.textContent = frames + ' fps';
@@ -55,7 +55,14 @@ export function openMirror(title) {
         const t0 = performance.now();
         const r = await fetch(`${API}/mirror/frame?after=${after}`, { cache: 'no-store', headers: PANEL_HEADERS });
         if (r.status === 410) { stop('O espelhamento parou no PC.'); return; }
-        if (r.status !== 200) { want = shown; if (r.status !== 204) throw new Error('HTTP ' + r.status); continue; }
+        // no new picture yet (e.g. the next video of a playlist is loading): keep waiting, the PC is still there
+        if (r.status !== 200 || (r.headers.get('Content-Type') || '').includes('json')) {
+          want = shown;
+          if (r.status !== 200 && r.status !== 204) throw new Error('HTTP ' + r.status);
+          lastOk = performance.now();
+          continue;
+        }
+        lastOk = performance.now();
         const seq = Number(r.headers.get('X-Seq') || 0);
         const blob = await r.blob();
         dl += performance.now() - t0; dlN++;
@@ -66,10 +73,10 @@ export function openMirror(title) {
         if (lastUrl) URL.revokeObjectURL(lastUrl);
         lastUrl = url;
         frames++;
-        failures = 0;
       } catch (e) {
-        if (++failures > 5) { stop('Perdi a conexão com o PC.'); return; }
-        await new Promise((res) => setTimeout(res, 300));
+        // only a PC that stays unreachable for a while closes the mirror (a playlist switching videos does not)
+        if (performance.now() - lastOk > 30000) { stop('Perdi a conexão com o PC.'); return; }
+        await new Promise((res) => setTimeout(res, 500));
       }
     }
   }
