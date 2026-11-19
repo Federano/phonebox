@@ -26,7 +26,17 @@ export function openMirror(title) {
   document.body.append(el);
 
   let alive = true, shown = 0, want = 0, lastUrl = '', frames = 0, failures = 0;
-  const fpsTimer = setInterval(() => { fps.textContent = frames + ' fps'; frames = 0; }, 1000);
+  let dl = 0, dlN = 0, statFrames = 0, statFrom = performance.now();
+  const fpsTimer = setInterval(() => {
+    fps.textContent = frames + ' fps';
+    statFrames += frames; frames = 0;
+    const secs = (performance.now() - statFrom) / 1000;
+    if (secs >= 3) {
+      const q = `fetch=${dlN ? Math.round(dl / dlN) : 0}&fps=${(statFrames / secs).toFixed(1)}`;
+      fetch(`${API}/mirror/tabletstats?${q}`, { method: 'POST', cache: 'no-store', headers: PANEL_HEADERS }).catch(() => {});
+      dl = 0; dlN = 0; statFrames = 0; statFrom = performance.now();
+    }
+  }, 1000);
   let hideTimer = 0;
   const showChrome = () => {
     el.classList.add('chrome');
@@ -42,11 +52,13 @@ export function openMirror(title) {
         // pipelined: each request asks for a frame newer than the one the other request is already fetching
         const after = Math.max(shown, want);
         want = after + 1;
+        const t0 = performance.now();
         const r = await fetch(`${API}/mirror/frame?after=${after}`, { cache: 'no-store', headers: PANEL_HEADERS });
         if (r.status === 410) { stop('O espelhamento parou no PC.'); return; }
         if (r.status !== 200) { want = shown; if (r.status !== 204) throw new Error('HTTP ' + r.status); continue; }
         const seq = Number(r.headers.get('X-Seq') || 0);
         const blob = await r.blob();
+        dl += performance.now() - t0; dlN++;
         if (!alive || seq <= shown) continue;
         shown = seq;
         const url = URL.createObjectURL(blob);

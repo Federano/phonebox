@@ -38,6 +38,10 @@ public sealed class MirrorCapture(ILogger<MirrorCapture> log, MediaMonitor media
     private System.Threading.Timer? _idleTimer;
 
     private int _openOnTablet;
+    private long _capturedAt;
+
+    /// <summary>Latency measurements (ms), logged every few seconds while mirroring.</summary>
+    public readonly MirrorLatency Latency = new();
 
     /// <summary>True once after mirroring was started from the PC (Federano icon in Chrome): the tablet opens it.</summary>
     public bool TakeOpenRequest() => Interlocked.Exchange(ref _openOnTablet, 0) == 1 && Active;
@@ -48,12 +52,14 @@ public sealed class MirrorCapture(ILogger<MirrorCapture> log, MediaMonitor media
     public bool WantsTab(int tab) { lock (_gate) return _browserTab == tab; }
 
     /// <summary>A frame of the locked tab's video, sent by the extension.</summary>
-    public bool PushFrame(int tab, byte[] jpeg)
+    public bool PushFrame(int tab, byte[] jpeg, long capturedAtMs = 0)
     {
         lock (_gate)
         {
             if (_browserTab != tab || jpeg.Length < 4 || jpeg[0] != 0xFF || jpeg[1] != 0xD8) return false;
             _jpeg = jpeg; _seq++;
+            _capturedAt = capturedAtMs;
+            if (capturedAtMs > 0) Latency.Add("chegada", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - capturedAtMs);
         }
         _frameReady.Release();
         return true;
@@ -127,7 +133,11 @@ public sealed class MirrorCapture(ILogger<MirrorCapture> log, MediaMonitor media
             lock (_gate)
             {
                 _lastAsk = Stopwatch.GetTimestamp();
-                if (_jpeg is not null && _seq > after) return (_jpeg, _seq);
+                if (_jpeg is not null && _seq > after)
+                {
+                    if (_capturedAt > 0) Latency.Add("saida", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - _capturedAt);
+                    return (_jpeg, _seq);
+                }
                 if (_session is null && _browserTab is null) return null;
             }
             var left = TimeSpan.FromSeconds((until - Stopwatch.GetTimestamp()) / (double)Stopwatch.Frequency);

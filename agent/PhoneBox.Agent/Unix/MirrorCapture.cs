@@ -10,7 +10,8 @@ public sealed class MirrorCapture(ILogger<MirrorCapture> log, MediaMonitor media
     public string? Start(int? requestedTab = null) { _ = (log, media, browser); return "Espelhamento só funciona no Windows por enquanto."; }
     public void Stop() { }
     public bool WantsTab(int tab) => false;
-    public bool PushFrame(int tab, byte[] jpeg) => false;
+    public bool PushFrame(int tab, byte[] jpeg, long capturedAtMs = 0) => false;
+    public readonly MirrorLatency Latency = new();
     public Task<(byte[] Jpeg, long Seq)?> NextFrameAsync(long after, TimeSpan wait, CancellationToken ct) => Task.FromResult<(byte[], long)?>(null);
     public void Dispose() { }
 }

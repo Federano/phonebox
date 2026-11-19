@@ -799,14 +799,16 @@ app.MapPost("/api/browser/youtube", (string? v, double? t, bool? playing, string
 app.MapPost("/api/mirror/start", (int? tab, MirrorCapture mirror) =>
     mirror.Start(tab) is { } error ? Results.Json(new { ok = false, error }) : Results.Json(new { ok = true, title = mirror.Title }));
 // Federano extension: a JPEG frame of the locked tab's video (body, at most 3 MB).
-app.MapPost("/api/mirror/push", async (int? tab, HttpRequest req, MirrorCapture mirror, CancellationToken ct) =>
+app.MapPost("/api/mirror/push", async (int? tab, long? ts, HttpRequest req, MirrorCapture mirror, CancellationToken ct) =>
 {
     if (tab is not { } tb || !mirror.WantsTab(tb)) return Results.Json(new { mirror = false });
     if (req.Query.ContainsKey("src")) app.Logger.LogInformation("mirror stats: {Stats}", req.QueryString.Value);
     using var ms = new MemoryStream();
     await req.Body.CopyToAsync(ms, ct);
     if (ms.Length > 3_000_000) return Results.BadRequest();
-    return Results.Json(new { mirror = mirror.PushFrame(tb, ms.ToArray()) });
+    var ok = mirror.PushFrame(tb, ms.ToArray(), ts ?? 0);
+    if (mirror.Latency.TakeSummary(TimeSpan.FromSeconds(3)) is { } lat) app.Logger.LogInformation("mirror latency: {Latency}", lat);
+    return Results.Json(new { mirror = ok });
 });
 // Federano: "ver no tablet?" pop-up. The tablet polls the offer and answers it.
 app.MapGet("/api/mirror/offer", (MirrorOffers offers, MirrorCapture mirror) =>
@@ -816,6 +818,13 @@ app.MapPost("/api/mirror/offer/answer", (string? id, bool? yes, MirrorOffers off
     if (string.IsNullOrEmpty(id)) return Results.BadRequest();
     var error = offers.Answer(id, yes == true);
     return Results.Json(new { ok = error is null, error, mirror = yes == true && error is null, title = mirror.Title });
+});
+// the tablet's side of the latency: how long a frame takes to arrive and be shown there (ms)
+app.MapPost("/api/mirror/tabletstats", (double? fetch, double? fps, MirrorCapture mirror) =>
+{
+    if (fetch is { } f) mirror.Latency.Add("tablet-download", (long)f);
+    if (fps is { } p) app.Logger.LogInformation("mirror tablet: {Fps:0.0} fps", p);
+    return Results.Json(new { ok = true });
 });
 app.MapPost("/api/mirror/stop", (MirrorCapture mirror) => { mirror.Stop(); return Results.Json(new { ok = true }); });
 app.MapGet("/api/mirror/frame", async (long? after, HttpResponse res, MirrorCapture mirror, CancellationToken ct) =>

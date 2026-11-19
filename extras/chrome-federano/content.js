@@ -101,7 +101,7 @@
     let track;
     try { track = v.captureStream().getVideoTracks()[0]; } catch (_) { return false; }
     if (!track) return false;
-    const r = new MediaStreamTrackProcessor({ track }).readable.getReader();
+    const r = new MediaStreamTrackProcessor({ track, maxBufferSize: 1 }).readable.getReader();
     reader = r; readerVideo = v;
     (async () => {
       while (mirroring && reader === r) {
@@ -113,7 +113,7 @@
         if (busy || !port || now - lastSent < 1000 / FPS) { frame.close(); continue; }
         lastSent = now;
         busy = true;
-        try { await encodeAndSend(frame, frame.displayWidth, frame.displayHeight); }
+        try { await encodeAndSend(frame, frame.displayWidth, frame.displayHeight, Date.now()); }
         catch (e) { busy = false; if (e && e.name === 'SecurityError') { tainted = true; stopMirror(); } }
         finally { frame.close(); }
       }
@@ -136,14 +136,14 @@
     if (port) { try { port.disconnect(); } catch (_) {} port = null; }
   }
 
-  async function encodeAndSend(source, srcW, srcH) {
+  async function encodeAndSend(source, srcW, srcH, ts) {
     const scale = Math.min(1, MAX_W / srcW);
     const w = Math.round(srcW * scale), h = Math.round(srcH * scale);
     if (!canvas || canvas.width !== w || canvas.height !== h) { canvas = new OffscreenCanvas(w, h); ctx = canvas.getContext('2d', { alpha: false }); }
     ctx.drawImage(source, 0, 0, w, h);
     const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: QUALITY });
     const b64 = await toBase64(blob);
-    if (port) port.postMessage({ frame: b64 }); else busy = false;   // "ready" from the worker frees the next frame
+    if (port) port.postMessage({ frame: b64, ts }); else busy = false;   // "ready" from the worker frees the next frame
   }
 
   function toBase64(blob) {
@@ -161,7 +161,7 @@
     if (!v || !v.videoWidth) return;
     busy = true;
     try {
-      await encodeAndSend(v, v.videoWidth, v.videoHeight);
+      await encodeAndSend(v, v.videoWidth, v.videoHeight, Date.now());
     } catch (e) {
       busy = false;
       // a video from another site without permission (or protected, like Netflix) cannot be read: give up on it

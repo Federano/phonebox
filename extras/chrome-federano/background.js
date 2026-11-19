@@ -83,7 +83,7 @@ chrome.runtime.onConnect.addListener((port) => {
       const bin = atob(m.frame);
       const bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      const r = await fetch(`${AGENT}/mirror/push?tab=${tab}`, { method: 'POST', body: bytes, headers: { 'Content-Type': 'image/jpeg' }, cache: 'no-store' });
+      const r = await fetch(`${AGENT}/mirror/push?tab=${tab}&ts=${Number(m.ts) || 0}`, { method: 'POST', body: bytes, headers: { 'Content-Type': 'image/jpeg' }, cache: 'no-store' });
       mirror = r.ok ? (await r.json()).mirror === true : false;
     } catch (_) { mirror = false; }
     try { port.postMessage(mirror ? { ready: true } : { mirror: false }); } catch (_) {}

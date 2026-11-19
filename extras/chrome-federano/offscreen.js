@@ -27,7 +27,7 @@ async function start(streamId, tab, rect) {
     return;
   }
   const track = stream.getVideoTracks()[0];
-  const reader = new MediaStreamTrackProcessor({ track }).readable.getReader();
+  const reader = new MediaStreamTrackProcessor({ track, maxBufferSize: 1 }).readable.getReader();
   const s = { tab, stream, reader, rect: rect || null };
   session = s;
   let canvas = null, ctx = null, busy = false, last = 0;
@@ -38,6 +38,7 @@ async function start(streamId, tab, rect) {
     try { res = await reader.read(); } catch (_) { break; }
     if (res.done) break;
     const frame = res.value;
+    const ts = Date.now();
     got++;
     const now = performance.now();
     if (now - statFrom >= 2000) {
@@ -63,7 +64,7 @@ async function start(streamId, tab, rect) {
       const t0 = performance.now();
       const jpeg = await encode(frame, sx, sy, sw, sh, w, h);   // the worker closes the frame
       const t1 = performance.now();
-      const resp = await fetch(`${AGENT}/mirror/push?tab=${tab}${stats}`, { method: 'POST', body: jpeg, headers: { 'Content-Type': 'image/jpeg' }, cache: 'no-store' });
+      const resp = await fetch(`${AGENT}/mirror/push?tab=${tab}&ts=${ts}${stats}`, { method: 'POST', body: jpeg, headers: { 'Content-Type': 'image/jpeg' }, cache: 'no-store' });
       stats = '';
       encMs += t1 - t0; postMs += performance.now() - t1; sent++;
       const j = resp.ok ? await resp.json() : { mirror: false };
