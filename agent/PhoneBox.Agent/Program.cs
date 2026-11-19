@@ -802,6 +802,7 @@ app.MapPost("/api/mirror/start", (int? tab, MirrorCapture mirror) =>
 app.MapPost("/api/mirror/push", async (int? tab, HttpRequest req, MirrorCapture mirror, CancellationToken ct) =>
 {
     if (tab is not { } tb || !mirror.WantsTab(tb)) return Results.Json(new { mirror = false });
+    if (req.Query.ContainsKey("src")) app.Logger.LogInformation("mirror stats: {Stats}", req.QueryString.Value);
     using var ms = new MemoryStream();
     await req.Body.CopyToAsync(ms, ct);
     if (ms.Length > 3_000_000) return Results.BadRequest();

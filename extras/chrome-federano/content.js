@@ -52,7 +52,7 @@
 
   // where the video is in the page, as fractions (the tab capture crops its frames to it)
   function videoRect(v) {
-    if (document.fullscreenElement) return { fx: 0, fy: 0, fw: 1, fh: 1 };
+    if (document.fullscreenElement) return { fx: 0, fy: 0, fw: 1, fh: 1, ar: innerWidth / innerHeight };
     const r = v.getBoundingClientRect();
     if (!innerWidth || !innerHeight) return null;
     const x = Math.max(0, r.left), y = Math.max(0, r.top);
@@ -64,7 +64,7 @@
       const ar = v.videoWidth / v.videoHeight;
       if (w / h > ar) { pw = h * ar; px = x + (w - pw) / 2; } else { ph = w / ar; py = y + (h - ph) / 2; }
     }
-    return { fx: px / innerWidth, fy: py / innerHeight, fw: pw / innerWidth, fh: ph / innerHeight };
+    return { fx: px / innerWidth, fy: py / innerHeight, fw: pw / innerWidth, fh: ph / innerHeight, ar: innerWidth / innerHeight };
   }
 
   // the tablet accepted: the tab capture if Chrome allows it (Federano icon clicked on this tab), else the page draws
