@@ -17,7 +17,7 @@
     <application
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
-        android:label="PhoneBox"
+        android:label="Federano"
         android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true"
         android:theme="@style/Theme.DeskPanel">
@@ -69,7 +69,7 @@
             android:enabled="@bool/quick_settings_tile"
             android:exported="true"
             android:icon="@drawable/ic_tile"
-            android:label="PhoneBox"
+            android:label="Federano"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
             tools:targetApi="n">
             <intent-filter>

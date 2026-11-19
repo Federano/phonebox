@@ -74,7 +74,7 @@ public sealed class Tray : IHostedService
         _icon = new NotifyIcon
         {
             Icon = iconStream is null ? SystemIcons.Application : new Icon(iconStream, 32, 32),
-            Text = "PhoneBox",
+            Text = "Federano",
             ContextMenuStrip = menu,
             Visible = true,
         };
@@ -115,7 +115,7 @@ public sealed class Tray : IHostedService
         }
         catch (Exception ex)
         {
-            MessageBox.Show("Could not change the startup shortcut: " + ex.Message, "PhoneBox", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            MessageBox.Show("Could not change the startup shortcut: " + ex.Message, "Federano", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
 }
