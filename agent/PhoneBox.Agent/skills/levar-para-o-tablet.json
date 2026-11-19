@@ -1,0 +1,8 @@
+{
+  // Federano: leva o vídeo do YouTube aberto no PC para o tablet, no mesmo minuto, e pausa no PC.
+  // Precisa da extensão do Federano no Chrome (extras/chrome-federano).
+  "name": "Levar vídeo para o tablet",
+  "triggers": ["joga pro tablet", "joga para o tablet", "manda pro tablet", "manda para o tablet", "leva pro tablet", "levar para o tablet", "passa pro tablet", "video no tablet", "abre no tablet"],
+  "action": "video.toTablet",
+  "reply": "Abrindo \"{title}\" no tablet em {time}."
+}

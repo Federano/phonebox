@@ -46,3 +46,33 @@ public class SkillsFillTests
         Assert.Equal("Está pausado \"Instagram\", no Chrome.", SkillEngine.Answer(skill, m).Reply);
     }
 }
+
+public class YouTubeToTabletTests
+{
+    static readonly SkillDef Skill = new() { Id = "levar", Action = "video.toTablet", Reply = "Abrindo \"{title}\" no tablet em {time}." };
+
+    [Fact]
+    public void NoVideoGivesHint() => Assert.Null(SkillEngine.ToTablet(Skill, new YouTubeTracker()).Open);
+
+    [Fact]
+    public void OpensSameVideoAtSameTimeAndPausesPc()
+    {
+        var yt = new YouTubeTracker();
+        Assert.False(yt.Update("dQw4w9WgXcQ", 125.4, false, "Vídeo"));
+        var r = SkillEngine.ToTablet(Skill, yt);
+        Assert.Equal("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=125s", r.Open);
+        Assert.Equal("Abrindo \"Vídeo\" no tablet em 2:05.", r.Reply);
+        Assert.True(yt.Update("dQw4w9WgXcQ", 126, true, "Vídeo"));   // the next report is told to pause
+        Assert.False(yt.Update("dQw4w9WgXcQ", 127, true, "Vídeo"));  // once
+    }
+
+    [Theory]
+    [InlineData("short")]
+    [InlineData("dQw4w9WgXc?")]
+    [InlineData(null)]
+    public void RejectsBadIds(string? id) => Assert.False(YouTubeTracker.ValidId(id));
+
+    [Fact]
+    public void MatchesTriggers() =>
+        Assert.NotNull(SkillEngine.Match([Skill with { Triggers = ["joga pro tablet"] }], "Federano, joga pro tablet!"));
+}

@@ -26,7 +26,13 @@ W.federano = {
     input.type = 'text'; input.placeholder = 'Digite para o Federano…'; input.maxLength = 500;
     const go = h('button', 'fd-go', '➤');
     const row = h('div', 'fd-row', mic, input, go);
-    box.append(title, reply, said, row);
+    const quick = h('div', 'fd-quick');
+    for (const [label, text] of [['📺 Levar vídeo para o tablet', 'joga pro tablet'], ['🎵 O que está tocando?', 'o que está tocando']]) {
+      const b = h('button', 'fd-chip', label);
+      b.onclick = () => { haptic(); ask(text); };
+      quick.append(b);
+    }
+    box.append(title, reply, said, quick, row);
 
     let alive = true, session = 0, watch = 0;
     const can = !!(bridge && bridge.listen && bridge.canListen);
@@ -45,6 +51,10 @@ W.federano = {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const j = await r.json();
         if (alive) { reply.textContent = j.reply || '—'; box.classList.toggle('miss', !j.skill); }
+        if (j.open) {
+          if (bridge && bridge.openVideo) bridge.openVideo(j.open);
+          else if (alive) reply.textContent += ' (Atualize o app Federano para abrir o vídeo.)';
+        }
       } catch (e) {
         if (alive) { reply.textContent = 'Não consegui falar com o PC.'; toast(e?.message || 'offline', 'err'); }
       } finally { box.classList.remove('busy'); }

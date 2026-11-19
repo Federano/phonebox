@@ -484,6 +484,26 @@ class MainActivity : Activity(), SensorEventListener {
 
         @JavascriptInterface
         fun cancelListening(key: String, id: Int) { if (ok(key) && id > 0) dictation.cancel(id) }
+
+        /**
+         * Federano: opens a YouTube video (the one taken from the PC) in the YouTube app, or the browser without it.
+         * Only https YouTube links are accepted.
+         */
+        @JavascriptInterface
+        fun openVideo(key: String, url: String): Boolean {
+            if (!ok(key)) return false
+            val uri = try { android.net.Uri.parse(url) } catch (_: Exception) { return false }
+            val host = uri.host?.lowercase() ?: return false
+            if (uri.scheme != "https" || host !in setOf("www.youtube.com", "youtube.com", "m.youtube.com", "youtu.be")) return false
+            runOnUiThread {
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                } catch (_: Exception) {
+                    Toast.makeText(this@MainActivity, "Nenhum app abre este vídeo", Toast.LENGTH_SHORT).show()
+                }
+            }
+            return true
+        }
     }
 
     companion object {

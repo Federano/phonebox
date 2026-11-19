@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Federano",
+  "version": "0.1.0",
+  "description": "Conta ao Federano (no seu PC) qual vídeo do YouTube está aberto, para levá-lo ao tablet no mesmo minuto.",
+  "host_permissions": ["http://127.0.0.1:8775/*"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    { "matches": ["https://www.youtube.com/*", "https://m.youtube.com/*"], "js": ["content.js"], "run_at": "document_idle" }
+  ]
+}

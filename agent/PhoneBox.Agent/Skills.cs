@@ -22,9 +22,10 @@ public sealed record SkillDef
     public bool Enabled { get; init; } = true;
 }
 
-public sealed record SkillResult(bool Ok, string? Skill, string Reply);
+/// <param name="Open">A link the tablet opens (e.g. the YouTube video taken from the PC).</param>
+public sealed record SkillResult(bool Ok, string? Skill, string Reply, string? Open = null);
 
-public sealed class SkillEngine(ILogger<SkillEngine> log, MediaMonitor media)
+public sealed class SkillEngine(ILogger<SkillEngine> log, MediaMonitor media, YouTubeTracker youtube)
 {
     public static readonly string[] WakeWords = ["federano"];
     static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true, ReadCommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
@@ -63,9 +64,27 @@ public sealed class SkillEngine(ILogger<SkillEngine> log, MediaMonitor media)
             case "media.playpause" or "media.next" or "media.prev":
                 var ok = await media.Control(skill.Action["media.".Length..], null);
                 return Answer(skill, media.Snapshot()) with { Ok = ok };
+            case "video.toTablet":
+                return ToTablet(skill, youtube);
             default:
                 return new(true, skill.Id, skill.Reply);
         }
+    }
+
+    /// <summary>The YouTube video open on the PC: the tablet opens it at the same time; the PC's copy is paused.</summary>
+    internal static SkillResult ToTablet(SkillDef skill, YouTubeTracker youtube)
+    {
+        if (youtube.Current() is not { } v)
+            return new(false, skill.Id, skill.ReplyEmpty.Length > 0 ? skill.ReplyEmpty
+                : "Não achei um vídeo do YouTube aberto no PC. A extensão do Federano está instalada no Chrome?");
+        youtube.RequestPause(v.VideoId);
+        var values = new Dictionary<string, string>
+        {
+            ["title"] = v.Title, ["time"] = YouTubeTracker.Clock(v.Seconds), ["app"] = "YouTube",
+            ["state"] = v.Playing ? "tocando" : "pausado",
+        };
+        var reply = skill.Reply.Length > 0 ? Fill(skill.Reply, values) : $"Abrindo \"{v.Title}\" no tablet em {values["time"]}.";
+        return new(true, skill.Id, reply, YouTubeTracker.WatchUrl(v.VideoId, v.Seconds));
     }
 
     internal static SkillResult Answer(SkillDef skill, MediaSnapshot? m)

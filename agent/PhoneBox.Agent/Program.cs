@@ -73,6 +73,7 @@ builder.Services.AddSingleton<SpectrumAnalyzer>();
 AddMonitor<SystemMonitor>(builder.Services);
 AddMonitor<MediaMonitor>(builder.Services);
 builder.Services.AddSingleton<SkillEngine>();
+builder.Services.AddSingleton<YouTubeTracker>();
 AddMonitor<QuotaMonitor>(builder.Services);
 AddMonitor<ProcessMonitor>(builder.Services);
 AddMonitor<SessionMonitor>(builder.Services);
@@ -223,6 +224,11 @@ app.Use(async (ctx, next) =>
         var host = ctx.Request.Host.Host;
         var spotifyCallback = ctx.Request.Method == "GET" && ctx.Request.Path == "/api/controls/spotify/callback"
             && app.Services.GetRequiredService<SpotifyControl>().HasPendingState(ctx.Request.Query["state"]);
+        // Federano: the Chrome extension (extras/chrome-federano) reports the YouTube video open on the PC; only
+        // that one endpoint takes a chrome-extension:// origin, and it only stores a video id and a time.
+        var extensionReport = ctx.Request.Method == "POST" && ctx.Request.Path == "/api/browser/youtube"
+            && origin.StartsWith("chrome-extension://", StringComparison.Ordinal) && (host == "127.0.0.1" || host == "localhost");
+        if (extensionReport) { await next(); return; }
         if ((host != "127.0.0.1" && host != "localhost") || (origin != "" && !SameOrigins.Contains(origin))
             || (!spotifyCallback && BrowserGuard.IsForeign(ctx.Request.Headers["Sec-Fetch-Site"], ctx.Request.Headers["Sec-Fetch-Mode"], ctx.Request.Method, ctx.Request.Path)))
         {
@@ -775,6 +781,13 @@ app.MapGet("/api/skills", (SkillEngine skills) => Results.Json(skills.Load()));
 // text in the query: the phone app's Wi-Fi transport sends no request bodies
 app.MapPost("/api/skills/run", async (string? text, SkillEngine skills) =>
     string.IsNullOrWhiteSpace(text) || text.Length > 500 ? Results.BadRequest() : Results.Json(await skills.RunAsync(text)));
+
+// Federano Chrome extension: the YouTube video open on the PC. The answer tells it to pause when the video was
+// taken to the tablet.
+app.MapPost("/api/browser/youtube", (string? v, double? t, bool? playing, string? title, YouTubeTracker yt) =>
+    YouTubeTracker.ValidId(v) && t is { } time
+        ? Results.Json(new { pause = yt.Update(v!, time, playing == true, title) })
+        : Results.BadRequest());
 
 app.MapGet("/api/art", (MediaMonitor media) =>
     media.Art is { } art ? Results.File(art.Bytes, art.Mime) : Results.NotFound());

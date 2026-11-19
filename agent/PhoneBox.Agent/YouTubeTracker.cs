@@ -1,0 +1,60 @@
+using System.Diagnostics;
+using System.Text.RegularExpressions;
+
+namespace PhoneBox.Agent;
+
+/// <summary>
+/// The YouTube video open in the PC's browser, as reported every couple of seconds by the Federano Chrome extension
+/// (extras/chrome-federano). Used by the "video.toTablet" skill: the tablet opens the same video at the same time and
+/// the extension pauses it on the PC (the pause travels back in the answer to its next report).
+/// </summary>
+public sealed partial class YouTubeTracker
+{
+    /// <summary>A report older than this means the tab was closed or the extension stopped.</summary>
+    public static readonly TimeSpan Fresh = TimeSpan.FromSeconds(10);
+
+    public sealed record Report(string VideoId, double Time, bool Playing, string Title, long At);
+
+    private readonly object _gate = new();
+    private Report? _last;
+    private string? _pauseFor;
+
+    [GeneratedRegex("^[A-Za-z0-9_-]{11}$")]
+    private static partial Regex VideoIdRx();
+
+    public static bool ValidId(string? id) => id is not null && VideoIdRx().IsMatch(id);
+
+    /// <summary>Stores a report; returns true when the extension should pause this video now.</summary>
+    public bool Update(string videoId, double time, bool playing, string? title)
+    {
+        if (!ValidId(videoId) || double.IsNaN(time) || time < 0) return false;
+        lock (_gate)
+        {
+            _last = new(videoId, Math.Min(time, 86_400 * 7), playing, (title ?? "").Trim()[..Math.Min((title ?? "").Trim().Length, 200)], Stopwatch.GetTimestamp());
+            if (_pauseFor != videoId) return false;
+            _pauseFor = null;
+            return playing;
+        }
+    }
+
+    /// <summary>The video with its position now (a playing video moves on since its last report), or null.</summary>
+    public (string VideoId, int Seconds, string Title, bool Playing)? Current()
+    {
+        lock (_gate)
+        {
+            if (_last is null) return null;
+            var age = Stopwatch.GetElapsedTime(_last.At);
+            if (age > Fresh) return null;
+            var t = _last.Time + (_last.Playing ? age.TotalSeconds : 0);
+            return (_last.VideoId, (int)Math.Floor(t), _last.Title, _last.Playing);
+        }
+    }
+
+    public void RequestPause(string videoId) { lock (_gate) _pauseFor = videoId; }
+
+    public static string WatchUrl(string videoId, int seconds) =>
+        $"https://www.youtube.com/watch?v={videoId}" + (seconds > 0 ? $"&t={seconds}s" : "");
+
+    public static string Clock(int seconds) =>
+        seconds >= 3600 ? $"{seconds / 3600}:{seconds / 60 % 60:00}:{seconds % 60:00}" : $"{seconds / 60}:{seconds % 60:00}";
+}
