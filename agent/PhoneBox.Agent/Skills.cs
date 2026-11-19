@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace PhoneBox.Agent;
 
@@ -73,10 +72,28 @@ public sealed class SkillEngine(ILogger<SkillEngine> log, MediaMonitor media)
     {
         if (m is null || (m.Title.Length == 0 && m.Artist.Length == 0))
             return new(true, skill.Id, skill.ReplyEmpty.Length > 0 ? skill.ReplyEmpty : "Nada tocando no PC agora.");
-        var reply = skill.Reply
-            .Replace("{title}", m.Title).Replace("{artist}", m.Artist).Replace("{album}", m.Album)
-            .Replace("{app}", m.App).Replace("{state}", m.Playing ? "tocando" : "pausado");
-        return new(true, skill.Id, reply);
+        var values = new Dictionary<string, string>
+        {
+            ["title"] = m.Title, ["artist"] = m.Artist, ["album"] = m.Album, ["app"] = m.App,
+            ["state"] = m.Playing ? "tocando" : "pausado",
+        };
+        return new(true, skill.Id, Fill(skill.Reply, values));
+    }
+
+    /// <summary>Fills {name} placeholders. A part in [brackets] is left out when a placeholder inside it is empty,
+    /// e.g. "[ de {artist}]".</summary>
+    internal static string Fill(string template, IReadOnlyDictionary<string, string> values)
+    {
+        string Sub(string s) => System.Text.RegularExpressions.Regex.Replace(s, @"\{(\w+)\}",
+            x => values.TryGetValue(x.Groups[1].Value, out var v) ? v : x.Value);
+        var withOptional = System.Text.RegularExpressions.Regex.Replace(template, @"\[([^\[\]]*)\]", x =>
+        {
+            var inner = x.Groups[1].Value;
+            var empty = System.Text.RegularExpressions.Regex.Matches(inner, @"\{(\w+)\}")
+                .Any(p => !values.TryGetValue(p.Groups[1].Value, out var v) || string.IsNullOrWhiteSpace(v));
+            return empty ? "" : inner;
+        });
+        return Sub(withOptional);
     }
 
     /// <summary>The skill with the longest trigger contained in the text (ignoring case, accents, punctuation and the wake word).</summary>
@@ -104,6 +121,3 @@ public sealed class SkillEngine(ILogger<SkillEngine> log, MediaMonitor media)
         return string.Join(' ', sb.ToString().Split(' ', StringSplitOptions.RemoveEmptyEntries));
     }
 }
-
-/// <summary>Body of POST /api/skills/run.</summary>
-public sealed record SkillRequest([property: JsonPropertyName("text")] string? Text);

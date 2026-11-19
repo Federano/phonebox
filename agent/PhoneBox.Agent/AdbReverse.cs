@@ -8,16 +8,16 @@ namespace PhoneBox.Agent;
 /// </summary>
 public sealed class AdbReverse(ConfigStore cfg, ILogger<AdbReverse> log, AgentEndpoint? endpoint = null) : BackgroundService
 {
-    public const string PanelActivity = "net.oxog.phonebox.deskpanel/.MainActivity";
-    private const string HomeAlias = "net.oxog.phonebox.deskpanel/.HomeAlias";
+    public const string PanelActivity = "com.federano.painel/net.oxog.phonebox.deskpanel.MainActivity";
+    private const string HomeAlias = "com.federano.painel/net.oxog.phonebox.deskpanel.HomeAlias";
     private readonly HashSet<string> _homeSet = [];
     private readonly HashSet<string> _awakeSet = [];
     private volatile string[] _missingApp = [];
 
     /// <summary>Connected phones that do not have the PhoneBox app yet (installed from Settings, e.g. after winget / Scoop).</summary>
     public string[] MissingApp => _missingApp;
-    private const string Rule = "tcp:8765";
-    private string TargetRule => $"tcp:{endpoint?.Port ?? 8765}";
+    private const string Rule = "tcp:8775";
+    private string TargetRule => $"tcp:{endpoint?.Port ?? 8775}";
 
     private string _lastState = "";
     private volatile string[] _devices = [];
@@ -146,7 +146,7 @@ public sealed class AdbReverse(ConfigStore cfg, ILogger<AdbReverse> log, AgentEn
             var ruled = HasOwnRule(list);
             if (ruled && !_missingApp.Contains(d)) continue;
             // is the app there at all? (the agent may have been installed on its own, with winget or Scoop)
-            var installed = (await Adb(adb, $"-s {d} shell pm path net.oxog.phonebox.deskpanel", ct, anyExit: true)).Contains("package:");
+            var installed = (await Adb(adb, $"-s {d} shell pm path com.federano.painel", ct, anyExit: true)).Contains("package:");
             _missingApp = installed ? _missingApp.Where(x => x != d).ToArray() : _missingApp.Union([d]).ToArray();
             if (!installed) { Report($"{d}: the PhoneBox app is not installed (Settings › General › Install the phone app)"); continue; }
             if (ruled) continue;

@@ -772,8 +772,9 @@ app.MapGet("/api/phones", (ConfigStore cfg) =>
 
 // Federano skills: GET lists them, POST runs the one whose trigger matches what was said/typed.
 app.MapGet("/api/skills", (SkillEngine skills) => Results.Json(skills.Load()));
-app.MapPost("/api/skills/run", async (SkillRequest req, SkillEngine skills) =>
-    string.IsNullOrWhiteSpace(req.Text) ? Results.BadRequest() : Results.Json(await skills.RunAsync(req.Text)));
+// text in the query: the phone app's Wi-Fi transport sends no request bodies
+app.MapPost("/api/skills/run", async (string? text, SkillEngine skills) =>
+    string.IsNullOrWhiteSpace(text) || text.Length > 500 ? Results.BadRequest() : Results.Json(await skills.RunAsync(text)));
 
 app.MapGet("/api/art", (MediaMonitor media) =>
     media.Art is { } art ? Results.File(art.Bytes, art.Mime) : Results.NotFound());
@@ -925,7 +926,7 @@ public partial class Program
                 collides = false;
                 if (prop.Value.ValueKind != JsonValueKind.Object) continue;
                 var enabled = false;
-                var port = 8766;
+                var port = 8776;
                 foreach (var lp in prop.Value.EnumerateObject())
                 {
                     if (lp.Name.Equals("enabled", StringComparison.OrdinalIgnoreCase) && lp.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)

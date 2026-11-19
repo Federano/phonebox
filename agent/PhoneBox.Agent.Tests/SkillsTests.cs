@@ -35,3 +35,14 @@ public class SkillsTests
     [Fact]
     public void NothingPlaying() => Assert.Equal("Nada tocando no PC agora.", SkillEngine.Answer(NowPlaying, null).Reply);
 }
+
+public class SkillsFillTests
+{
+    [Fact]
+    public void OptionalPartDroppedWhenEmpty()
+    {
+        var skill = new SkillDef { Id = "x", Action = "media.now", Reply = "Está {state} \"{title}\"[ de {artist}], no {app}." };
+        var m = new MediaSnapshot("Chrome", "Instagram", "", "", false, 0, 0, 0, false);
+        Assert.Equal("Está pausado \"Instagram\", no Chrome.", SkillEngine.Answer(skill, m).Reply);
+    }
+}

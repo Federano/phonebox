@@ -106,7 +106,7 @@ public sealed class AdbReverseTests : IDisposable
     [InlineData(true, true)]
     public async Task KeepAwakeIsReappliedOnlyAfterDisconnect(bool disconnect, bool secondPhone)
     {
-        const string rule = "UsbFfs tcp:8765 tcp:8765";
+        const string rule = "UsbFfs tcp:8775 tcp:8775";
         const string awake = "shell settings put global stay_on_while_plugged_in 7";
         string[] devices = secondPhone ? ["FAKE1", "FAKE2"] : ["FAKE1"];
         var fake = FakeAdb(devices, rule, null);
@@ -146,8 +146,8 @@ public sealed class AdbReverseTests : IDisposable
         using var adb = new AdbReverse(store, NullLogger<AdbReverse>.Instance);
         var ensure = typeof(AdbReverse).GetMethod("Ensure", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
         Task Pass() => (Task)ensure.Invoke(adb, [CancellationToken.None])!;
-        const string first = "-s FAKE1 reverse tcp:8765 tcp:8765";
-        const string second = "-s FAKE2 reverse tcp:8765 tcp:8765";
+        const string first = "-s FAKE1 reverse tcp:8775 tcp:8775";
+        const string second = "-s FAKE2 reverse tcp:8775 tcp:8775";
 
         await Pass();
         Assert.Contains(first, Calls());
@@ -176,8 +176,8 @@ public sealed class AdbReverseTests : IDisposable
         using var adb = new AdbReverse(store, NullLogger<AdbReverse>.Instance);
         var ensure = typeof(AdbReverse).GetMethod("Ensure", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
         await (Task)ensure.Invoke(adb, [CancellationToken.None])!;
-        Assert.DoesNotContain($"-s {refused} reverse tcp:8765 tcp:8765", Calls());
-        if (working is not null) Assert.Contains($"-s {working} reverse tcp:8765 tcp:8765", Calls());
+        Assert.DoesNotContain($"-s {refused} reverse tcp:8775 tcp:8775", Calls());
+        if (working is not null) Assert.Contains($"-s {working} reverse tcp:8775 tcp:8775", Calls());
     }
 
     /// <summary>Runs the loop until <paramref name="done"/> holds or three rounds ("adb devices" calls) went by.</summary>
@@ -210,27 +210,27 @@ public sealed class AdbReverseTests : IDisposable
     [Fact]
     public async Task ARefusedHomeScreenOnOnePhoneDoesNotHoldBackTheOthersOrKeepAwake()
     {
-        var fake = FakeAdb(["FAKE1", "FAKE2"], "UsbFfs tcp:8765 tcp:8765", homeRefused: "FAKE1");
+        var fake = FakeAdb(["FAKE1", "FAKE2"], "UsbFfs tcp:8775 tcp:8775", homeRefused: "FAKE1");
         const string awake = "shell settings put global stay_on_while_plugged_in 7";
         var calls = await RunUntil(fake, new { adbPath = fake, display = new { homeScreen = true, keepAwake = true, followComputerLock = false } }, null,
             c => c.Contains("-s FAKE2 " + awake) && c.Contains("-s FAKE1 " + awake));
-        Assert.Contains("-s FAKE2 shell cmd package set-home-activity net.oxog.phonebox.deskpanel/.HomeAlias", calls);
+        Assert.Contains("-s FAKE2 shell cmd package set-home-activity com.federano.painel/net.oxog.phonebox.deskpanel.HomeAlias", calls);
         Assert.Contains("-s FAKE1 " + awake, calls);
         Assert.Contains("-s FAKE2 " + awake, calls);
     }
 
     /// <summary>
     /// A rule left by an agent on another port (--port) points the phone at a port nobody listens on; the agent must
-    /// point it back at itself instead of taking any "tcp:8765" in the list for its own rule.
+    /// point it back at itself instead of taking any "tcp:8775" in the list for its own rule.
     /// </summary>
     [Theory]
-    [InlineData("UsbFfs tcp:8765 tcp:18765", 8765)]   // a development agent ran before
-    [InlineData("UsbFfs tcp:8765 tcp:8765", 18765)]   // the development agent itself, after the installed one
-    [InlineData("UsbFfs tcp:9000 tcp:8765", 8765)]    // some other rule onto the computer's 8765
+    [InlineData("UsbFfs tcp:8775 tcp:18775", 8775)]   // a development agent ran before
+    [InlineData("UsbFfs tcp:8775 tcp:8775", 18775)]   // the development agent itself, after the installed one
+    [InlineData("UsbFfs tcp:9000 tcp:8775", 8775)]    // some other rule onto the computer's 8775
     public async Task AReverseRuleToAnotherPortIsPointedAtThisAgent(string existing, int port)
     {
         var fake = FakeAdb(["FAKE1"], existing, homeRefused: null);
-        var want = $"-s FAKE1 reverse tcp:8765 tcp:{port}";
+        var want = $"-s FAKE1 reverse tcp:8775 tcp:{port}";
         var calls = await RunUntil(fake, new { adbPath = fake, deviceSerial = "FAKE1", display = new { homeScreen = false, keepAwake = false } },
             new AgentEndpoint(port), c => c.Contains(want));
         Assert.Contains(want, calls);
@@ -240,7 +240,7 @@ public sealed class AdbReverseTests : IDisposable
     [Fact]
     public async Task TheAgentsOwnRuleIsLeftAlone()
     {
-        var fake = FakeAdb(["FAKE1"], "UsbFfs tcp:8765 tcp:8765", homeRefused: null);
+        var fake = FakeAdb(["FAKE1"], "UsbFfs tcp:8775 tcp:8775", homeRefused: null);
         var calls = await RunUntil(fake, new { adbPath = fake, deviceSerial = "FAKE1", display = new { homeScreen = false, keepAwake = false } },
             null, _ => false);
         Assert.True(calls.Count(c => c == "devices") >= 2, "the loop did not run twice");
