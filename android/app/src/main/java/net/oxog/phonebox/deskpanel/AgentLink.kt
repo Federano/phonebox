@@ -34,7 +34,8 @@ import javax.net.ssl.X509TrustManager
  */
 class AgentLink(private val context: Context) {
 
-    class Reply(val code: Int, val contentType: String?, val body: InputStream)
+    /** [seq]: the X-Seq header of a Federano mirror frame, passed on to the panel. */
+    class Reply(val code: Int, val contentType: String?, val body: InputStream, val seq: String? = null)
 
     enum class Route { USB, WIFI, NONE }
 
@@ -290,7 +291,7 @@ class AgentLink(private val context: Context) {
             return Reply(502, "application/json", ByteArrayInputStream("""{"error":"unexpected response"}""".toByteArray()))
         }
         val body = (if (code >= 400) c.errorStream else c.inputStream) ?: ByteArrayInputStream(ByteArray(0))
-        return Reply(code, c.contentType, body)
+        return Reply(code, c.contentType, body, c.getHeaderField("X-Seq"))
     }
 
     /** While on USB, refresh the Wi-Fi pairing data about once a minute. */

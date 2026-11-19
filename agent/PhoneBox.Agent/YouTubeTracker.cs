@@ -52,6 +52,21 @@ public sealed partial class YouTubeTracker
 
     public void RequestPause(string videoId) { lock (_gate) _pauseFor = videoId; }
 
+    // ---- Federano mirroring: where the playing <video> is inside the browser window (physical pixels)
+    private (int X, int Y, int Width, int Height, long At)? _rect;
+
+    public void UpdateRect(int x, int y, int width, int height)
+    {
+        lock (_gate) _rect = width > 0 && height > 0 ? (x, y, width, height, Stopwatch.GetTimestamp()) : null;
+    }
+
+    /// <summary>The playing video's rectangle, if the extension reported one in the last few seconds.</summary>
+    public (int X, int Y, int Width, int Height)? VideoRect()
+    {
+        lock (_gate)
+            return _rect is { } r && Stopwatch.GetElapsedTime(r.At) < TimeSpan.FromSeconds(4) ? (r.X, r.Y, r.Width, r.Height) : null;
+    }
+
     public static string WatchUrl(string videoId, int seconds) =>
         $"https://www.youtube.com/watch?v={videoId}" + (seconds > 0 ? $"&t={seconds}s" : "");
 

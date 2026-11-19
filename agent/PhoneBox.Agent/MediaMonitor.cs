@@ -14,6 +14,8 @@ public sealed class MediaMonitor(ILogger<MediaMonitor> log) : BackgroundService
 
     public AlbumArt? Art => _art.Current;
     public MediaSnapshot? Snapshot() => _snap;
+    /// <summary>Federano: the media app's id (e.g. "chrome.exe", "Spotify.exe"), to find its window for mirroring.</summary>
+    public string? SourceAppId { get { try { return _observed?.SourceAppUserModelId; } catch { return null; } } }
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {

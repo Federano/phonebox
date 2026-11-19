@@ -1,0 +1,8 @@
+{
+  // Federano: abre no tablet (app/navegador) o vídeo do YouTube aberto no PC, no mesmo minuto, e pausa no PC.
+  // Precisa da extensão do Federano no Chrome (extras/chrome-federano).
+  "name": "Abrir no YouTube do tablet",
+  "triggers": ["abre no youtube do tablet", "abrir no youtube do tablet", "continua no tablet", "continuar no tablet"],
+  "action": "video.toTablet",
+  "reply": "Abrindo \"{title}\" no tablet em {time}."
+}

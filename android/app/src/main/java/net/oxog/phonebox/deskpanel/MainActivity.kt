@@ -186,7 +186,8 @@ class MainActivity : Activity(), SensorEventListener {
         val mime = ct.substringBefore(';').trim()
         val charset = if (ct.contains("charset=")) ct.substringAfter("charset=").trim() else null
         val status = if (r.code in 100..599 && r.code !in 300..399) r.code else 502
-        return WebResourceResponse(mime, charset, status, if (status < 400) "OK" else "Error", NO_STORE, r.body)
+        val headers = if (r.seq != null) NO_STORE + ("X-Seq" to r.seq) else NO_STORE
+        return WebResourceResponse(mime, charset, status, if (status < 400) "OK" else "Error", headers, r.body)
     }
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)

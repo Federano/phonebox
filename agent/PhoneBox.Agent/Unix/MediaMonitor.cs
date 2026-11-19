@@ -42,6 +42,8 @@ public sealed class MediaMonitor(ILogger<MediaMonitor> log) : BackgroundService
 
     public AlbumArt? Art { get; private set; }
     public MediaSnapshot? Snapshot() => _snap;
+    /// <summary>Federano: the media app's id (Windows only).</summary>
+    public string? SourceAppId => null;
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {

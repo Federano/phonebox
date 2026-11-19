@@ -74,6 +74,7 @@ AddMonitor<SystemMonitor>(builder.Services);
 AddMonitor<MediaMonitor>(builder.Services);
 builder.Services.AddSingleton<SkillEngine>();
 builder.Services.AddSingleton<YouTubeTracker>();
+builder.Services.AddSingleton<MirrorCapture>();
 AddMonitor<QuotaMonitor>(builder.Services);
 AddMonitor<ProcessMonitor>(builder.Services);
 AddMonitor<SessionMonitor>(builder.Services);
@@ -784,10 +785,26 @@ app.MapPost("/api/skills/run", async (string? text, SkillEngine skills) =>
 
 // Federano Chrome extension: the YouTube video open on the PC. The answer tells it to pause when the video was
 // taken to the tablet.
-app.MapPost("/api/browser/youtube", (string? v, double? t, bool? playing, string? title, YouTubeTracker yt) =>
-    YouTubeTracker.ValidId(v) && t is { } time
-        ? Results.Json(new { pause = yt.Update(v!, time, playing == true, title) })
-        : Results.BadRequest());
+app.MapPost("/api/browser/youtube", (string? v, double? t, bool? playing, string? title, int? x, int? y, int? w, int? h, YouTubeTracker yt) =>
+{
+    // the playing video's rectangle in the browser window, for mirroring (any site); nothing else is kept
+    if (playing == true && x is { } rx && y is { } ry && w is { } rw && h is { } rh) yt.UpdateRect(rx, ry, rw, rh);
+    var pause = YouTubeTracker.ValidId(v) && t is { } time && yt.Update(v!, time, playing == true, title);
+    return Results.Json(new { pause });
+});
+
+// Federano mirroring: the tablet starts it, then pulls JPEG frames (long poll: waits for a frame newer than "after").
+app.MapPost("/api/mirror/start", (MirrorCapture mirror) =>
+    mirror.Start() is { } error ? Results.Json(new { ok = false, error }) : Results.Json(new { ok = true, title = mirror.Title }));
+app.MapPost("/api/mirror/stop", (MirrorCapture mirror) => { mirror.Stop(); return Results.Json(new { ok = true }); });
+app.MapGet("/api/mirror/frame", async (long? after, HttpResponse res, MirrorCapture mirror, CancellationToken ct) =>
+{
+    var f = await mirror.NextFrameAsync(after ?? 0, TimeSpan.FromSeconds(2), ct);
+    if (f is not { } frame) return mirror.Active ? Results.StatusCode(204) : Results.StatusCode(410);
+    res.Headers["X-Seq"] = frame.Seq.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    res.Headers.CacheControl = "no-store";
+    return Results.Bytes(frame.Jpeg, "image/jpeg");
+});
 
 app.MapGet("/api/art", (MediaMonitor media) =>
     media.Art is { } art ? Results.File(art.Bytes, art.Mime) : Results.NotFound());

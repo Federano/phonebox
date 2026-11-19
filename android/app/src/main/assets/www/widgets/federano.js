@@ -1,5 +1,6 @@
 import { API, PANEL_HEADERS, bridge, curPage, h, haptic, icon, pages, toast } from '../main.js';
 import { W } from '../registry.js';
+import { openMirror } from '../mirror.js';
 
 // ---------------------------------------------------------------- Federano
 // "Falar com o Federano": tap the microphone (the phone's speech recognizer, as in the dictation widget) or type, and
@@ -27,7 +28,7 @@ W.federano = {
     const go = h('button', 'fd-go', '➤');
     const row = h('div', 'fd-row', mic, input, go);
     const quick = h('div', 'fd-quick');
-    for (const [label, text] of [['📺 Levar vídeo para o tablet', 'joga pro tablet'], ['🎵 O que está tocando?', 'o que está tocando']]) {
+    for (const [label, text] of [['📺 Espelhar vídeo do PC', 'espelha'], ['▶️ Abrir no YouTube do tablet', 'abre no youtube do tablet'], ['🎵 O que está tocando?', 'o que está tocando']]) {
       const b = h('button', 'fd-chip', label);
       b.onclick = () => { haptic(); ask(text); };
       quick.append(b);
@@ -51,6 +52,7 @@ W.federano = {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const j = await r.json();
         if (alive) { reply.textContent = j.reply || '—'; box.classList.toggle('miss', !j.skill); }
+        if (j.mirror) openMirror(j.reply);
         if (j.open) {
           if (bridge && bridge.openVideo) bridge.openVideo(j.open);
           else if (alive) reply.textContent += ' (Atualize o app Federano para abrir o vídeo.)';

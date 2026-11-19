@@ -13,7 +13,7 @@ public sealed record SkillDef
     public string Id { get; init; } = "";
     public string Name { get; init; } = "";
     public string[] Triggers { get; init; } = [];
-    /// <summary>Built-in action: media.now, media.playpause, media.next, media.prev, reply.</summary>
+    /// <summary>Built-in action: media.now, media.playpause, media.next, media.prev, video.mirror, video.toTablet, reply.</summary>
     public string Action { get; init; } = "reply";
     /// <summary>Answer; {title}, {artist}, {album}, {app}, {state} are filled from the media playing on the PC.</summary>
     public string Reply { get; init; } = "";
@@ -23,9 +23,10 @@ public sealed record SkillDef
 }
 
 /// <param name="Open">A link the tablet opens (e.g. the YouTube video taken from the PC).</param>
-public sealed record SkillResult(bool Ok, string? Skill, string Reply, string? Open = null);
+/// <param name="Mirror">True: the tablet shows the PC's video live (GET /api/mirror/frame).</param>
+public sealed record SkillResult(bool Ok, string? Skill, string Reply, string? Open = null, bool Mirror = false);
 
-public sealed class SkillEngine(ILogger<SkillEngine> log, MediaMonitor media, YouTubeTracker youtube)
+public sealed class SkillEngine(ILogger<SkillEngine> log, MediaMonitor media, YouTubeTracker youtube, MirrorCapture mirror)
 {
     public static readonly string[] WakeWords = ["federano"];
     static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true, ReadCommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
@@ -66,6 +67,15 @@ public sealed class SkillEngine(ILogger<SkillEngine> log, MediaMonitor media, Yo
                 return Answer(skill, media.Snapshot()) with { Ok = ok };
             case "video.toTablet":
                 return ToTablet(skill, youtube);
+            case "video.mirror":
+                if (mirror.Start() is { } error) return new(false, skill.Id, error);
+                var m = media.Snapshot();
+                var values = new Dictionary<string, string>
+                {
+                    ["title"] = m?.Title is { Length: > 0 } t ? t : mirror.Title, ["artist"] = m?.Artist ?? "", ["app"] = m?.App ?? "",
+                    ["state"] = m?.Playing == true ? "tocando" : "pausado",
+                };
+                return new(true, skill.Id, skill.Reply.Length > 0 ? Fill(skill.Reply, values) : "Espelhando no tablet.", Mirror: true);
             default:
                 return new(true, skill.Id, skill.Reply);
         }
