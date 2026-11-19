@@ -9,12 +9,22 @@
 const AGENT = 'http://127.0.0.1:8775/api';
 
 const rects = new Map();      // tab id -> video rectangle as fractions of the page
-let captured = null;          // tab id under tab capture
+
+// The tab under tab capture. Chrome stops this worker when idle and starts it again on the next event, which empties
+// its variables, so the captured tab is kept in session storage (while the offscreen page that captures it exists).
+async function getCaptured() {
+  try {
+    if (!(await chrome.offscreen.hasDocument())) return null;
+    const { captured } = await chrome.storage.session.get('captured');
+    return Number.isInteger(captured) ? captured : null;
+  } catch (_) { return null; }
+}
+const setCaptured = (tab) => chrome.storage.session.set({ captured: tab }).catch(() => {});
 
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (!msg) return false;
   if (msg.type === 'federano-offscreen-stopped') {
-    if (captured === msg.tab) captured = null;
+    setCaptured(null);
     chrome.offscreen.closeDocument().catch(() => {});
     return false;
   }
@@ -27,14 +37,14 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   const tab = sender.tab && Number.isInteger(sender.tab.id) ? sender.tab.id : null;
   if (tab !== null && msg.rect) {
     rects.set(tab, msg.rect);
-    if (captured === tab) chrome.runtime.sendMessage({ target: 'federano-offscreen', type: 'rect', tab, rect: msg.rect }).catch(() => {});
+    // the offscreen page keeps only the rectangle of the tab it captures
+    chrome.runtime.sendMessage({ target: 'federano-offscreen', type: 'rect', tab, rect: msg.rect }).catch(() => {});
   }
   const q = new URLSearchParams({ playing: String(!!msg.playing) });
   if (tab !== null) q.set('tab', String(tab));
   if (msg.v) { q.set('v', msg.v); q.set('t', String(msg.t)); q.set('title', String(msg.title || '').slice(0, 200)); }
-  fetch(`${AGENT}/browser/youtube?${q}`, { method: 'POST', cache: 'no-store' })
-    .then((r) => (r.ok ? r.json() : {}))
-    .then((j) => reply({ pause: j.pause === true, mirror: j.mirror === true, tabCapture: captured === tab }))
+  Promise.all([fetch(`${AGENT}/browser/youtube?${q}`, { method: 'POST', cache: 'no-store' }).then((r) => (r.ok ? r.json() : {})), getCaptured()])
+    .then(([j, captured]) => reply({ pause: j.pause === true, mirror: j.mirror === true, tabCapture: captured === tab }))
     .catch(() => reply({ pause: false, mirror: false, tabCapture: false }));   // Federano not running: try again later
   return true; // answer asynchronously
 });
@@ -51,7 +61,7 @@ chrome.action.onClicked.addListener(async (tab) => {
 });
 
 async function startTabCapture(tabId) {
-  if (captured === tabId) return true;
+  if ((await getCaptured()) === tabId) return true;
   let streamId;
   try { streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId }); }
   catch (_) { return false; }   // not allowed yet: the Federano icon was not clicked on this tab
@@ -60,7 +70,7 @@ async function startTabCapture(tabId) {
       await chrome.offscreen.createDocument({ url: 'offscreen.html', reasons: ['USER_MEDIA'], justification: 'Espelhar no tablet o vídeo desta aba' });
     }
   } catch (_) { return false; }
-  captured = tabId;
+  await setCaptured(tabId);
   chrome.runtime.sendMessage({ target: 'federano-offscreen', type: 'start', streamId, tab: tabId, rect: rects.get(tabId) || null }).catch(() => {});
   return true;
 }
@@ -77,7 +87,7 @@ chrome.runtime.onConnect.addListener((port) => {
   const tab = port.sender.tab.id;
   port.onMessage.addListener(async (m) => {
     if (!m || typeof m.frame !== 'string') return;
-    if (captured === tab) { try { port.postMessage({ tabCapture: true }); } catch (_) {} return; }   // tab capture took over
+    if ((await getCaptured()) === tab) { try { port.postMessage({ tabCapture: true }); } catch (_) {} return; }   // tab capture took over
     let mirror = true;
     try {
       const bin = atob(m.frame);

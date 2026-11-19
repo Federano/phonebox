@@ -28,7 +28,7 @@ async function start(streamId, tab, rect) {
   }
   const track = stream.getVideoTracks()[0];
   const reader = new MediaStreamTrackProcessor({ track, maxBufferSize: 1 }).readable.getReader();
-  const s = { tab, stream, reader, rect: rect || null };
+  const s = { tab, stream, reader, rect: rect || null, started: performance.now() };
   session = s;
   let canvas = null, ctx = null, busy = false, last = 0;
   // measurements, sent with the frames so the agent can log where time goes
@@ -46,7 +46,8 @@ async function start(streamId, tab, rect) {
       stats = `&src=tab&in=${(got / secs).toFixed(1)}&out=${(sent / secs).toFixed(1)}&enc=${sent ? Math.round(encMs / sent) : 0}&post=${sent ? Math.round(postMs / sent) : 0}&size=${frame.displayWidth}x${frame.displayHeight}&vis=${document.visibilityState}`;
       got = 0; sent = 0; encMs = 0; postMs = 0; statFrom = now;
     }
-    if (busy || now - last < 1000 / FPS) { frame.close(); continue; }
+    // wait (up to 2 s) for the video rectangle so the tablet never shows the whole page
+    if (busy || now - last < 1000 / FPS || (!s.rect && now - s.started < 2000)) { frame.close(); continue; }
     last = now; busy = true;
     try {
       const fw = frame.displayWidth, fh = frame.displayHeight;
