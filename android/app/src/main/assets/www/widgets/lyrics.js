@@ -14,26 +14,36 @@ const LEAD = 350;   // show a line a little before it is sung
 // lines follow the PC's sound (the agent's spectrum analyser, the same as the Spectrum bars widget) and take the
 // cover's colours. Drawn ~30 times a second, only while the page is on screen.
 // st: bass / mid / high (0..1, smoothed), pulse (1 on a beat, fading), act (1 playing .. ~0 paused), ph (phase, moves
-// with act so a paused song almost stops the lines)
+// with act so a paused song almost stops the lines), now (ms) and waveAt (ms: a new lyric line started)
 function weave(g, W, H, st, cols) {
   g.clearRect(0, 0, W, H);
-  const n = 22, s = W / 660, ph = st.ph;
+  const n = 22, s = W / 660, ph = st.ph, t = st.now / 1000;
+  const rgb = cols.map((c) => c.split(',').map(Number));
+  const waveT = (st.now - st.waveAt) / 1000, waveR = waveT * 520 * s;
   for (let k = 0; k < n; k++) {
     const f = k / (n - 1);                       // 0 = top line, 1 = bottom line
-    const y0 = H * (.1 + .85 * f), c = cols[k % cols.length];
+    const y0 = H * (.1 + .85 * f);
+    // depth: three layers; near lines sharper, bolder and faster, far ones softer and slower
+    const layer = k % 3, depth = [1, .7, .45][layer];
+    // the cover's colours drift slowly from line to line
+    const ci = (k + t * .35) % rgb.length, c0 = rgb[Math.floor(ci)], c1 = rgb[(Math.floor(ci) + 1) % rgb.length], fr = ci % 1;
+    const col = c0.map((v, i) => Math.round(v + (c1[i] - v) * fr)).join(',');
     // the bottom lines follow the bass, the middle ones the voice, the top ones the highs
     const lvl = (f > .6 ? st.bass : f < .35 ? st.high : st.mid) * 1.3;
-    const amp = (6 + 34 * lvl * st.act) + 4;
+    const amp = ((6 + 34 * lvl * st.act) * depth) + 4;
+    const sp = depth;
     g.beginPath();
     for (let x = 0; x <= W; x += 6 * s) {
-      const y = y0 + (Math.sin(x / s * .009 + ph * .9 + k * .35) * amp + Math.sin(x / s * .021 - ph * 1.4 + k * .2) * 6) * s;
+      let y = y0 + (Math.sin(x / s * .009 + ph * .9 * sp + k * .35) * amp + Math.sin(x / s * .021 - ph * 1.4 * sp + k * .2) * 6 * depth) * s;
+      // a ring of light moving out from the centre when a new lyric line starts
+      if (waveT < 1.4) { const d = Math.hypot(x - W / 2, y0 - H * .45); y += Math.exp(-((d - waveR) ** 2) / (1800 * s * s)) * 14 * s * (1 - waveT / 1.4); }
       x ? g.lineTo(x, y) : g.moveTo(x, y);
     }
     // a beat makes the lines glow and thicken for a moment
-    const alpha = (.16 + .08 * Math.sin(k + ph)) * (.35 + .65 * st.act) + .45 * st.pulse;
-    g.strokeStyle = `rgba(${c},${Math.min(.9, alpha).toFixed(3)})`;
-    g.lineWidth = (1.2 + 1.8 * st.pulse) * s;
-    if (st.pulse > .2) { g.shadowColor = `rgb(${c})`; g.shadowBlur = 10 * st.pulse * s; } else g.shadowBlur = 0;
+    const alpha = (.16 + .08 * Math.sin(k + ph)) * [1.25, .85, .55][layer] * (.35 + .65 * st.act) + .45 * st.pulse;
+    g.strokeStyle = `rgba(${col},${Math.min(.9, alpha).toFixed(3)})`;
+    g.lineWidth = (1.2 + 1.8 * st.pulse) * [1.4, 1, .8][layer] * s;
+    if (st.pulse > .2) { g.shadowColor = `rgb(${col})`; g.shadowBlur = 10 * st.pulse * s; } else g.shadowBlur = 0;
     g.stroke();
   }
   g.shadowBlur = 0;
@@ -107,7 +117,7 @@ W.lyrics = {
     const qHead = h('div', 'ly-qh', 'A seguir'), queue = h('div', 'ly-queue');
     const bgPhoto = h('img', 'ly-bgphoto'); bgPhoto.alt = '';
     const fx = h('canvas', 'ly-fx');
-    const fxs = { bass: .3, mid: .3, high: .3, avgBass: .3, pulse: 0, lastBeat: 0, act: 1, ph: 0, lastMs: 0 };
+    const fxs = { bass: .3, mid: .3, high: .3, avgBass: .3, pulse: 0, lastBeat: 0, act: 1, ph: 0, lastMs: 0, now: 0, waveAt: -1e9 };
     let cols = ['150,120,220', '120,90,200', '200,120,180', '90,140,220'], lastWant = 0, raf = 0, lastFrame = 0;
     function animate(ms) {
       raf = requestAnimationFrame(animate);
@@ -128,6 +138,7 @@ W.lyrics = {
       fxs.act += ((playing ? 1 : .06) - fxs.act) * .05;
       fxs.ph += (ms - (fxs.lastMs || ms)) / 1000 * (.5 + .7 * fxs.act);
       fxs.lastMs = ms;
+      fxs.now = ms;
       weave(fx.getContext('2d'), w, hgt, fxs, cols);
       // the blurred photo breathes (slow zoom) and lights up a little on the beat; dimmer when paused
       bgPhoto.style.transform = `scale(${(1 + .04 * Math.sin(ms / 4000)).toFixed(4)})`;
@@ -281,6 +292,7 @@ W.lyrics = {
       const hand = Date.now() < handUntil;
       if (i === active && !(follow && !hand)) return;
       if (i !== active) {
+        if (i > active && active >= 0) fxs.waveAt = performance.now();
         active = i;
         lines.forEach((l, k) => { l.el.classList.toggle('on', k === i); l.el.classList.toggle('past', k < i); });
       }
