@@ -1,4 +1,4 @@
-import { API, PANEL_HEADERS, averageColor, curPage, h, haptic, pages, toast } from '../main.js';
+import { API, D, PANEL_HEADERS, api, averageColor, curPage, h, haptic, pages, streaming, toast } from '../main.js';
 import { W } from '../registry.js';
 
 // ---------------------------------------------------------------- Federano "Letra"
@@ -9,6 +9,31 @@ import { W } from '../registry.js';
 
 const clock = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const LEAD = 350;   // show a line a little before it is sung
+
+// ---- background: the artist's photo blurred behind the lyrics, and many thin lines waving together like fabric. The
+// lines follow the PC's sound (the agent's spectrum analyser, the same as the Spectrum bars widget) and take the
+// cover's colours. Drawn ~30 times a second, only while the page is on screen.
+function weave(g, W, H, t, lvl, cols) {
+  g.clearRect(0, 0, W, H);
+  const n = 22, s = W / 660;
+  for (let k = 0; k < n; k++) {
+    const y0 = H * (.1 + .85 * k / (n - 1)), c = cols[k % cols.length];
+    g.beginPath();
+    for (let x = 0; x <= W; x += 6 * s) {
+      const y = y0 + (Math.sin(x / s * .009 + t * .9 + k * .35) * (10 + 22 * lvl) + Math.sin(x / s * .021 - t * 1.4 + k * .2) * 6) * s;
+      x ? g.lineTo(x, y) : g.moveTo(x, y);
+    }
+    g.strokeStyle = `rgba(${c},${(.16 + .1 * Math.sin(k + t)).toFixed(3)})`;
+    g.lineWidth = 1.2 * s;
+    g.stroke();
+  }
+}
+const shade = (rgb, k) => rgb.map((v) => Math.round(Math.min(255, v * k)));
+function coverColours(avg) {
+  // four tones around the cover's colour: itself, lighter, and two rotated hues
+  const [r, g, b] = avg;
+  return [avg, shade(avg, 1.35), [b, r, g], [g, b, r]].map((c) => c.join(','));
+}
 const SVG = {
   play: '<svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></svg>',
   pause: '<svg viewBox="0 0 24 24"><rect x="6.5" y="5" width="4" height="14" rx="1.2" fill="currentColor"/><rect x="13.5" y="5" width="4" height="14" rx="1.2" fill="currentColor"/></svg>',
@@ -38,8 +63,32 @@ W.lyrics = {
     const list = h('div', 'ly-lines');
     const note = h('div', 'ly-note', '');
     const qHead = h('div', 'ly-qh', 'A seguir'), queue = h('div', 'ly-queue');
+    const bgPhoto = h('img', 'ly-bgphoto'); bgPhoto.alt = '';
+    const fx = h('canvas', 'ly-fx');
+    let cols = coverColours([120, 90, 200]), lvl = .3, lastWant = 0, raf = 0, lastFrame = 0;
+    function animate(ms) {
+      raf = requestAnimationFrame(animate);
+      if (!visible() || ms - lastFrame < 33) return;
+      lastFrame = ms;
+      const w = Math.round(fx.clientWidth), hgt = Math.round(fx.clientHeight);
+      if (!w || !hgt) return;
+      if (fx.width !== w || fx.height !== hgt) { fx.width = w; fx.height = hgt; }
+      // loudness from the PC's sound: the lower bands, smoothed; calm when there is no sound data or the song is paused
+      const bands = Date.now() - (D.spectrumAt || 0) < 800 ? D.spectrum : null;
+      let target = .25;
+      if (m && !m.playing) target = .05;
+      else if (Array.isArray(bands) && bands.length) target = Math.min(1, bands.slice(0, 14).reduce((a, v) => a + v, 0) / 14 / 55);
+      lvl += (target - lvl) * .12;
+      weave(fx.getContext('2d'), w, hgt, ms / 1000, lvl, cols);
+      // keep the agent's analyser running while this page shows (it stops a few seconds after the last ask)
+      if (Date.now() - lastWant > 2000) {
+        lastWant = Date.now();
+        api('/spectrum', 'GET', 1500).then((r) => { if (!streaming() && r && r.b) { D.spectrum = r.b; D.spectrumAt = Date.now(); } }).catch(() => {});
+      }
+    }
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) raf = requestAnimationFrame(animate);
     box.append(
-      h('div', 'ly-main', h('div', 'ly-top', chip, trBtn), h('div', 'ly-words', list, note)),
+      h('div', 'ly-main', bgPhoto, h('div', 'ly-bgveil'), fx, h('div', 'ly-top', chip, trBtn), h('div', 'ly-words', list, note)),
       h('div', 'ly-card', h('div', 'ly-pic', img), h('div', 'ly-meta', title, artist), h('div', 'ly-prog', bar, times), ctl, qHead, queue));
     // the next songs; tapping one plays it (Spotify connected in the settings)
     let qKey = '', lastQueue = [];
@@ -118,7 +167,7 @@ W.lyrics = {
       img.dataset.src = src || '';
       box.classList.toggle('ly-noart', !src);
       box.classList.toggle('ly-artist-photo', !!isArtist);
-      if (src) img.src = src; else img.removeAttribute('src');
+      for (const el of [img, bgPhoto]) { if (src) el.src = src; else el.removeAttribute('src'); }
     }
     function tint() {
       // the background takes the cover's colour (same-origin /api/art, so it can be read)
@@ -127,7 +176,10 @@ W.lyrics = {
       const probe = new Image();
       probe.onload = () => {
         const c = averageColor(probe);
-        if (c) box.style.setProperty('--ly-bg', `rgb(${c.split(',').map((v) => Math.round(+v * .45)).join(',')})`);
+        if (c) {
+          box.style.setProperty('--ly-bg', `rgb(${c.split(',').map((v) => Math.round(+v * .45)).join(',')})`);
+          cols = coverColours(c.split(',').map((v) => +v));
+        }
       };
       probe.src = `${API}/art?v=${m.artId}`;
     }
@@ -205,7 +257,7 @@ W.lyrics = {
     poll();
     return {
       update() {},
-      destroy() { alive = false; clearTimeout(timer); clearInterval(ticker); },
+      destroy() { alive = false; clearTimeout(timer); clearInterval(ticker); cancelAnimationFrame(raf); },
     };
   },
 };

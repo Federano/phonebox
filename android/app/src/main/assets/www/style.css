@@ -1458,3 +1458,11 @@ body.controls-top .ap-foot { order: -1; margin-bottom: 4px; }
 .ly-q:active { background: rgba(255, 255, 255, .12); }
 .w.ly.ly-idle .ly-prog, .w.ly.ly-idle .ly-ctl, .w.ly.ly-idle .ly-tr { visibility: hidden; }
 @container (max-width: 640px) { .w.ly { grid-template-columns: 1fr; } .ly-card { display: none; } }
+/* lyrics page background: the artist's photo blurred and the waving lines (widgets/lyrics.js) */
+.ly-main { overflow: hidden; }
+.ly-bgphoto { position: absolute; inset: -8%; width: 116%; height: 116%; object-fit: cover; filter: blur(24px) brightness(.48) saturate(1.2); transition: opacity .6s; }
+.w.ly.ly-noart .ly-bgphoto { opacity: 0; }
+.ly-bgveil { position: absolute; inset: 0; background: radial-gradient(80% 75% at 50% 45%, rgba(0, 0, 0, .05), rgba(0, 0, 0, .5)); }
+.ly-fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.ly-words { z-index: 1; }
+.ly-line { text-shadow: 0 2px 14px rgba(0, 0, 0, .35); }
