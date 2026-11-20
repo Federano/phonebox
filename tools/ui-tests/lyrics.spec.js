@@ -137,3 +137,36 @@ test('the card lists the next songs and a tap plays one', async ({ page }) => {
   await page.locator('.ly-q').nth(1).click();
   expect(await page.evaluate(() => window.__played)).toEqual(['/controls/spotify/action/play-queued?id=spotify%3Atrack%3Adef']);
 });
+
+test('a new song shows at once and its lyrics follow; the queue stays during a skip', async ({ page }) => {
+  await page.goto('/panel/');
+  await page.evaluate(() => {
+    localStorage.clear();
+    localStorage.setItem('pb-demo-config', JSON.stringify({ night: { enabled: false }, shortcuts: [],
+      pages: [{ id: 'letra', title: 'Letra', enabled: true, widgets: [{ id: 'ly', type: 'lyrics', x: 0, y: 0, w: 12, h: 6, options: {} }] }] }));
+  });
+  await page.reload();
+  await page.evaluate(() => {
+    const q = [{ id: 'spotify:track:abc', name: 'Miracle Man', artist: 'Oliver Tree' }, { id: 'spotify:track:def', name: 'Hurt', artist: 'Oliver Tree' }];
+    const media = { app: 'Spotify', title: 'Miracle Man', artist: 'Oliver Tree', album: '', playing: true, posMs: 2000, durMs: 150000, artId: 0, canSeek: true, ageMs: 0 };
+    window.__step = 0;
+    const real = window.fetch;
+    window.fetch = (url, init) => {
+      if (String(url).includes('/lyrics/now')) {
+        window.__step++;
+        // first answers: the new song, no lyrics yet and an empty queue (as Spotify does right after a skip)
+        const a = window.__step < 3
+          ? { playing: true, key: 'miracle man\u0001oliver tree', media, artistImage: null, queue: window.__step === 1 ? q : [], lyrics: null, pending: true }
+          : { playing: true, key: 'miracle man\u0001oliver tree', media, artistImage: null, queue: [], lyrics: { found: true, instrumental: false, plain: '', lines: [{ t: 1000, text: 'Line one' }] }, pending: false };
+        return Promise.resolve(new Response(JSON.stringify(a), { headers: { 'Content-Type': 'application/json' } }));
+      }
+      return real(url, init);
+    };
+  });
+  await expect(page.locator('.ly-title')).toHaveText('Miracle Man');
+  await expect(page.locator('.ly-note')).toHaveText('Carregando a letra…');
+  await expect(page.locator('.ly-line')).toHaveText('Line one');
+  // the empty queues did not wipe the list: the song now playing left it, the next one stayed
+  await expect(page.locator('.ly-q')).toHaveCount(1);
+  await expect(page.locator('.ly-q')).toContainText('Hurt');
+});

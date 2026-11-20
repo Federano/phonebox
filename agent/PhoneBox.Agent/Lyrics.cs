@@ -28,6 +28,9 @@ public sealed partial class LyricsService(ILogger<LyricsService> log)
     }
     private readonly ConcurrentDictionary<string, Task<Result>> _cache = new();
 
+    /// <summary>The song the lyrics page asked about last (a new one makes the Spotify queue be read again).</summary>
+    public string LastKey { get; set; } = "";
+
     public static string KeyOf(string title, string artist) => (title.Trim() + "\u0001" + artist.Trim()).ToLowerInvariant();
 
     public Task<Result> GetAsync(string title, string artist, string album, long durationMs)

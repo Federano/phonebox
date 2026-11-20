@@ -42,9 +42,12 @@ W.lyrics = {
       h('div', 'ly-main', h('div', 'ly-top', chip, trBtn), h('div', 'ly-words', list, note)),
       h('div', 'ly-card', h('div', 'ly-pic', img), h('div', 'ly-meta', title, artist), h('div', 'ly-prog', bar, times), ctl, qHead, queue));
     // the next songs; tapping one plays it (Spotify connected in the settings)
-    let qKey = '';
-    function fillQueue(items) {
-      const list2 = Array.isArray(items) ? items.filter((q) => q && q.name) : [];
+    let qKey = '', lastQueue = [];
+    function fillQueue(items, nowTitle) {
+      let list2 = Array.isArray(items) ? items.filter((q) => q && q.name) : [];
+      // right after a skip Spotify can answer with an empty queue for a moment: keep the last one, minus the song now playing
+      if (!list2.length && nowTitle && lastQueue.length) list2 = lastQueue.filter((q) => q.name !== nowTitle);
+      if (nowTitle) lastQueue = list2;
       const k = JSON.stringify(list2.map((q) => q.id));
       if (k === qKey) return;
       qKey = k;
@@ -70,7 +73,7 @@ W.lyrics = {
     applyTr();
     trBtn.onclick = () => { haptic(); showTr = !showTr; applyTr(); try { localStorage.setItem('federano.lyricsTr', showTr ? '1' : '0'); } catch (_) {} active = -2; draw(); };
 
-    let alive = true, key = '', lines = [], active = -2, m = null, at = 0, artId = -1, timer = 0;
+    let alive = true, key = '', pendingKey = '', lines = [], active = -2, m = null, at = 0, artId = -1, timer = 0;
     const visible = () => pages[curPage] === page && !document.body.classList.contains('night');
     const pos = () => !m ? 0 : Math.min(m.durMs || Infinity, m.posMs + (m.ageMs || 0) + (m.playing ? performance.now() - at : 0));
 
@@ -172,24 +175,31 @@ W.lyrics = {
           const j = await r.json();
           if (!j.playing) {
             m = null; key = ''; box.classList.add('ly-idle'); title.textContent = 'Nada tocando no PC'; artist.textContent = ''; setArt('', false);
-            chip.textContent = ''; trBtn.hidden = true; fillQueue([]);
+            chip.textContent = ''; trBtn.hidden = true; lastQueue = []; fillQueue([]);
             list.replaceChildren(); lines = []; note.textContent = '';
           } else {
             box.classList.remove('ly-idle');
             m = j.media; at = performance.now();
             title.textContent = m.title; artist.textContent = [m.artist, m.album].filter(Boolean).join(' · ');
-            fillQueue(j.queue);
+            if (m.app === 'Spotify') fillQueue(j.queue, m.title); else { lastQueue = []; fillQueue([]); }
             chip.textContent = `● ${m.app || 'PC'} · ${m.playing ? 'tocando' : 'pausado'}`;
             total.textContent = m.durMs > 0 ? clock(m.durMs) : '';
             showPlay();
             setArt(j.artistImage || (m.artId ? `${API}/art?v=${m.artId}` : ''), !!j.artistImage);
             tint();
-            if (j.key !== key) { key = j.key; if (j.lyrics) fillLines(j.lyrics); }
+            if (j.key !== key) {
+              if (j.lyrics) { key = j.key; pendingKey = ''; fillLines(j.lyrics); }
+              else if (j.pending && pendingKey !== j.key) {
+                // the new song shows at once; its lyrics arrive on the next calls
+                pendingKey = j.key; list.replaceChildren(); lines = []; active = -2; trBtn.hidden = true;
+                box.classList.remove('ly-plain', 'ly-none'); note.textContent = 'Carregando a letra…';
+              }
+            }
             draw();
           }
         } catch (_) {}
       }
-      timer = setTimeout(poll, visible() ? 2000 : 6000);
+      timer = setTimeout(poll, pendingKey ? 600 : visible() ? 2000 : 6000);
     }
     const ticker = setInterval(() => { if (visible()) draw(); }, 200);
     poll();

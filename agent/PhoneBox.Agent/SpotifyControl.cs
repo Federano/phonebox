@@ -312,6 +312,9 @@ public sealed class SpotifyControl : IDisposable
         return image;
     }
 
+    /// <summary>Federano: the next read asks Spotify again (the song changed, so the queue did too).</summary>
+    public void ForgetSnapshot() => _snapshot = null;
+
     public sealed record PlayResult(bool Ok, string Message, string Title = "", string Artist = "");
 
     /// <summary>

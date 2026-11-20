@@ -854,6 +854,7 @@ app.MapGet("/api/lyrics/now", async (string? have, MediaMonitor media, LyricsSer
     var m = media.Snapshot();
     if (m is null || m.Title.Length == 0) return Results.Json(new { playing = false });
     var key = LyricsService.KeyOf(m.Title, m.Artist);
+    if (lyrics.LastKey != key) { lyrics.LastKey = key; spotify.ForgetSnapshot(); }
     var artistImage = m.App == "Spotify" ? await spotify.PlayingArtistImage(m.Title, ct) : null;
     object[]? queue = null;
     if (m.App == "Spotify")
@@ -863,13 +864,20 @@ app.MapGet("/api/lyrics/now", async (string? have, MediaMonitor media, LyricsSer
             .Select(q => (object)new { id = q?["id"]?.GetValue<string>(), name = q?["name"]?.GetValue<string>(), artist = q?["artist"]?.GetValue<string>() })
             .ToArray();
     }
+    // a new song answers at once (title, time, queue); its lyrics and translation follow on a later call ("pending")
     object? words = null;
+    var pending = false;
     if (have != key)
     {
-        var r = await lyrics.GetAsync(m.Title, m.Artist, m.Album, m.DurMs);
-        words = new { lines = r.Lines.Select(l => new { t = l.T, text = l.Text }), plain = r.Plain, instrumental = r.Instrumental, found = r.Found, trans = r.Trans, lang = r.Lang };
+        var task = lyrics.GetAsync(m.Title, m.Artist, m.Album, m.DurMs);
+        if (task.IsCompleted || await Task.WhenAny(task, Task.Delay(400, ct)) == task)
+        {
+            var r = await task;
+            words = new { lines = r.Lines.Select(l => new { t = l.T, text = l.Text }), plain = r.Plain, instrumental = r.Instrumental, found = r.Found, trans = r.Trans, lang = r.Lang };
+        }
+        else pending = true;
     }
-    return Results.Json(new { playing = true, key, media = m, artistImage, queue, lyrics = words });
+    return Results.Json(new { playing = true, key, media = m, artistImage, queue, lyrics = words, pending });
 });
 
 app.MapGet("/api/art", (MediaMonitor media) =>
