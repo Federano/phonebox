@@ -85,3 +85,17 @@ test('controls drive the PC player and a tapped line jumps there', async ({ page
   const posts = await page.evaluate(() => window.__posts);
   expect(posts).toEqual(['/media/playpause', '/media/seekby?ms=-10000', '/media/seekby?ms=10000', '/media/next', '/media/prev', '/media/seek?ms=19800']);
 });
+
+test('a song on Spotify opens the lyrics page by itself', async ({ page }) => {
+  await page.goto('/panel/');
+  await page.evaluate(() => {
+    localStorage.clear();
+    localStorage.setItem('pb-demo-config', JSON.stringify({ night: { enabled: false }, shortcuts: [],
+      display: { touchGraceSec: 0, minDwellSec: 0, switchCountdownSec: 0 },
+      pages: [{ id: 'home', title: 'Home', enabled: true, widgets: [{ id: 'c', type: 'clock', x: 0, y: 0, w: 12, h: 6, options: {} }] },
+        { id: 'letra', title: 'Letra', enabled: true, widgets: [{ id: 'ly', type: 'lyrics', x: 0, y: 0, w: 12, h: 6, options: {} }] }] }));
+  });
+  await page.reload();
+  // the demo plays a song on Spotify: the panel moves to the lyrics page
+  await expect(page.locator('#dots i').nth(1)).toHaveClass(/on/, { timeout: 15000 });
+});

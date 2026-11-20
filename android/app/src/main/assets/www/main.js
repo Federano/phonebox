@@ -764,6 +764,7 @@ export function mediaFrom(prev, m) {
 export const setMediaState = (m) => {
   if (D.state) D.state.media = m || null;
   media = mediaFrom(media, m);
+  spotifyAuto(media);
   emit('state');
 };
 // The background glow: the accent colour (Settings › Display), or the album art's colour while music plays.
@@ -1509,6 +1510,29 @@ export function requestPage(d) {
 // events that arrive together (several rules at once) are looked at together, a moment later
 function soon() { if (!navTimer) navTimer = setInterval(pump, 250); }
 
+// Federano: a song starting on Spotify opens the lyrics page by itself (the page with the "lyrics" widget), through
+// the same calm switch as rules: it waits while the panel is in use and counts down. The page is held while Spotify
+// plays; a minute after Spotify stops (or another player takes over) the panel goes back to where it was.
+const SP_RULE = 'federano-spotify';
+let spLast = '', spStopSince = 0;
+const lyricsPageId = () => pages.find((p) => (p.widgets || []).some((w) => w.type === 'lyrics'))?.id || null;
+export function spotifyAuto(m) {
+  if (PREVIEW) return;
+  const id = lyricsPageId();
+  if (!id) return;
+  if (m && m.app === 'Spotify' && m.playing) {
+    spStopSince = 0;
+    const k = `${m.title}|${m.artist}`;
+    if (k === spLast) return;
+    spLast = k;
+    if (ruleHold?.rule === SP_RULE) ruleHold.at = Date.now();   // a new song keeps the page for longer
+    else requestPage({ page: id, rule: SP_RULE, name: 'Spotify', detail: m.title, hold: true });
+  } else if (spLast) {
+    if (!spStopSince) spStopSince = Date.now();
+    else if (Date.now() - spStopSince > 60_000) { spLast = ''; spStopSince = 0; requestBack(SP_RULE); }
+  }
+}
+
 export function requestBack(rule) {
   if (PREVIEW || !rule) return;
   // the rule ended before its turn: nothing to undo
@@ -2144,6 +2168,7 @@ export function applyState(s, replayGen = null) {
   if (!fresh) return replayGen === evGen;
   D.state = s;
   media = mediaFrom(media, s.media);
+  spotifyAuto(media);
   setOnline(true);
   if (s.cfgVersion !== undefined && cfgVersion !== null && s.cfgVersion !== cfgVersion) loadConfig();
   if (s.pushVersion !== undefined && s.pushVersion !== pushVersion) loadPush();
