@@ -49,14 +49,35 @@ public sealed class MediaMonitor(ILogger<MediaMonitor> log) : BackgroundService
         }
     }
 
-    private void SessionChanged(GlobalSystemMediaTransportControlsSessionManager sender, CurrentSessionChangedEventArgs args) => Interlocked.Increment(ref _revision);
-    private void PropertiesChanged(GlobalSystemMediaTransportControlsSession sender, MediaPropertiesChangedEventArgs args) => Interlocked.Increment(ref _revision);
+    private void SessionChanged(GlobalSystemMediaTransportControlsSessionManager sender, CurrentSessionChangedEventArgs args) { Interlocked.Increment(ref _revision); PollSoon(); }
+    private void PropertiesChanged(GlobalSystemMediaTransportControlsSession sender, MediaPropertiesChangedEventArgs args) { Interlocked.Increment(ref _revision); PollSoon(); }
+    // Federano: a pause, a seek or a new song reaches the tablet the moment Windows reports it, not at the next 1 s poll
+    private void PlaybackChanged(GlobalSystemMediaTransportControlsSession sender, PlaybackInfoChangedEventArgs args) => PollSoon();
+    private void TimelineChanged(GlobalSystemMediaTransportControlsSession sender, TimelinePropertiesChangedEventArgs args) => PollSoon();
+    private int _pollSoon;
+    private void PollSoon()
+    {
+        if (_mgr is null || Interlocked.Exchange(ref _pollSoon, 1) == 1) return;
+        _ = Task.Run(async () =>
+        {
+            try { await Task.Delay(60); Interlocked.Exchange(ref _pollSoon, 0); await Poll(); }
+            catch (Exception ex) { Interlocked.Exchange(ref _pollSoon, 0); log.LogDebug("media: {Msg}", ex.Message); }
+        });
+    }
     private void Observe(GlobalSystemMediaTransportControlsSession? session)
     {
         if (ReferenceEquals(session, _observed)) return;
-        if (_observed is not null) _observed.MediaPropertiesChanged -= PropertiesChanged;
+        if (_observed is not null)
+        {
+            _observed.MediaPropertiesChanged -= PropertiesChanged;
+            try { _observed.PlaybackInfoChanged -= PlaybackChanged; _observed.TimelinePropertiesChanged -= TimelineChanged; } catch { }
+        }
         _observed = session;
-        if (_observed is not null) _observed.MediaPropertiesChanged += PropertiesChanged;
+        if (_observed is not null)
+        {
+            _observed.MediaPropertiesChanged += PropertiesChanged;
+            try { _observed.PlaybackInfoChanged += PlaybackChanged; _observed.TimelinePropertiesChanged += TimelineChanged; } catch { }
+        }
     }
 
     private async Task Poll(CancellationToken ct = default)

@@ -1,4 +1,4 @@
-import { API, D, PANEL_HEADERS, api, averageColor, curPage, h, haptic, pages, streaming, toast } from '../main.js';
+import { API, D, PANEL_HEADERS, api, averageColor, curPage, h, haptic, media as liveMedia, pages, streaming, toast } from '../main.js';
 import { W } from '../registry.js';
 
 // ---------------------------------------------------------------- Federano "Letra"
@@ -145,8 +145,10 @@ W.lyrics = {
     const pos = () => !m ? 0 : Math.min(m.durMs || Infinity, m.posMs + (m.ageMs || 0) + (m.playing ? performance.now() - at : 0));
 
     // ---- controls: the PC's player through the media API (same as the media widget and the mirror)
+    let holdUntil = 0;
     async function media(action, q = '', optimistic) {
       haptic();
+      holdUntil = Date.now() + 1200;
       if (optimistic) optimistic();
       try {
         const r = await fetch(`${API}/media/${action}${q}`, { method: 'POST', cache: 'no-store', headers: PANEL_HEADERS });
@@ -154,7 +156,7 @@ W.lyrics = {
         const j = await r.json();
         if (j.media && m) { m = { ...m, ...j.media }; at = performance.now(); showPlay(); active = -2; draw(); }
       } catch (_) { toast('Sem conexão com o PC.', 'err'); }
-      setTimeout(() => { clearTimeout(timer); poll(); }, 900);
+      if (action === 'next' || action === 'prev') setTimeout(() => { clearTimeout(timer); poll(); }, 250);
     }
     const showPlay = () => {
       bPlay.innerHTML = m && m.playing ? SVG.pause : SVG.play;
@@ -284,9 +286,30 @@ W.lyrics = {
           }
         } catch (_) {}
       }
-      timer = setTimeout(poll, pendingKey ? 600 : visible() ? 2000 : 6000);
+      timer = setTimeout(poll, pendingKey ? 400 : visible() ? 4000 : 8000);
     }
-    const ticker = setInterval(() => { if (visible()) draw(); }, 200);
+    // the shared media state streamed by the agent (pokes on every change): title, play/pause and position follow it at
+    // once; a new song asks for its lyrics right away instead of waiting for the next poll
+    function follow2() {
+      const s = liveMedia;
+      if (!s || !m || !s.title) return;
+      const lk = `${s.app}|${s.title}`;
+      if (lk !== lastLive) {
+        lastLive = lk;
+        // the song changed on the PC: ask for it (and its lyrics) now
+        if ((s.title !== m.title || s.app !== m.app) && !pollNow.pending) { pollNow.pending = true; clearTimeout(timer); poll().finally(() => { pollNow.pending = false; }); }
+      }
+      if (s.title !== m.title || s.app !== m.app) return;
+      if (Date.now() < holdUntil) return;   // a control just used: its own answer is newer
+      const p = s.posMs + (s.playing ? performance.now() - s.at : 0);
+      if (s.playing !== m.playing || Math.abs(p - pos()) > 700) {
+        m = { ...m, playing: s.playing, posMs: p, ageMs: 0, durMs: s.durMs || m.durMs }; at = performance.now();
+        showPlay(); active = -2;
+      }
+    }
+    const pollNow = { pending: false };
+    let lastLive = '';
+    const ticker = setInterval(() => { if (visible()) { follow2(); draw(); } }, 150);
     poll();
     return {
       update() {},
