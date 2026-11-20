@@ -2,9 +2,9 @@ import { API, PANEL_HEADERS, averageColor, curPage, h, haptic, pages, toast } fr
 import { W } from '../registry.js';
 
 // ---------------------------------------------------------------- Federano "Letra"
-// The song playing on the PC: the artist's photo (Spotify) fills the background, the lyrics sit in the middle with the
-// line being sung lit up and kept at the centre, a Portuguese translation under each line (switch "Tradução"), and a
-// bar at the bottom with the song and the controls. Data: GET /api/lyrics/now (lyrics from LRCLIB and the translation,
+// The song playing on the PC: the lyrics take most of the screen, centred, with the line being sung lit up and kept in
+// the middle and a Portuguese translation under each line (switch "Tradução"); a card on the right has the artist's
+// photo (Spotify), the song, the controls and the next songs of the queue (tap one to play it). Data: GET /api/lyrics/now (lyrics from LRCLIB and the translation,
 // sent once per song). Without timed lyrics the text is shown still.
 
 const clock = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -22,8 +22,7 @@ W.lyrics = {
   needs: [],
   create(box, { page }) {
     box.classList.add('ly');
-    const img = h('img', 'ly-bgimg'); img.alt = '';
-    const thumb = h('img', 'ly-thumb'); thumb.alt = '';
+    const img = h('img', 'ly-photo'); img.alt = '';
     const chip = h('div', 'ly-chip', '');
     const trBtn = h('button', 'ly-tr', h('i'), 'Tradução'); trBtn.hidden = true;
     const title = h('div', 'ly-title', '');
@@ -38,8 +37,32 @@ W.lyrics = {
     const ctl = h('div', 'ly-ctl', bBack, bPrev, bPlay, bNext, bFwd);
     const list = h('div', 'ly-lines');
     const note = h('div', 'ly-note', '');
-    box.append(img, h('div', 'ly-veil'), h('div', 'ly-top', chip, trBtn), h('div', 'ly-words', list, note),
-      h('div', 'ly-dock', thumb, h('div', 'ly-meta', title, artist), h('div', 'ly-prog', bar, times), ctl));
+    const qHead = h('div', 'ly-qh', 'A seguir'), queue = h('div', 'ly-queue');
+    box.append(
+      h('div', 'ly-main', h('div', 'ly-top', chip, trBtn), h('div', 'ly-words', list, note)),
+      h('div', 'ly-card', h('div', 'ly-pic', img), h('div', 'ly-meta', title, artist), h('div', 'ly-prog', bar, times), ctl, qHead, queue));
+    // the next songs; tapping one plays it (Spotify connected in the settings)
+    let qKey = '';
+    function fillQueue(items) {
+      const list2 = Array.isArray(items) ? items.filter((q) => q && q.name) : [];
+      const k = JSON.stringify(list2.map((q) => q.id));
+      if (k === qKey) return;
+      qKey = k;
+      qHead.hidden = !list2.length;
+      queue.replaceChildren(...list2.map((q) => {
+        const row = h('button', 'ly-q', h('b', null, q.name), h('span', null, q.artist || ''));
+        row.onclick = async () => {
+          haptic();
+          try {
+            const r = await fetch(`${API}/controls/spotify/action/play-queued?id=${encodeURIComponent(q.id)}`, { method: 'POST', cache: 'no-store', headers: PANEL_HEADERS });
+            const j = await r.json();
+            if (j && j.ok === false) toast(j.error || 'O Spotify não tocou essa música.', 'err');
+          } catch (_) { toast('Sem conexão com o PC.', 'err'); }
+          setTimeout(() => { clearTimeout(timer); poll(); }, 1200);
+        };
+        return row;
+      }));
+    }
     // translation on/off, remembered on this panel
     let showTr = true;
     try { showTr = localStorage.getItem('federano.lyricsTr') !== '0'; } catch (_) {}
@@ -92,7 +115,7 @@ W.lyrics = {
       img.dataset.src = src || '';
       box.classList.toggle('ly-noart', !src);
       box.classList.toggle('ly-artist-photo', !!isArtist);
-      for (const el of [img, thumb]) { if (src) el.src = src; else el.removeAttribute('src'); }
+      if (src) img.src = src; else img.removeAttribute('src');
     }
     function tint() {
       // the background takes the cover's colour (same-origin /api/art, so it can be read)
@@ -149,12 +172,13 @@ W.lyrics = {
           const j = await r.json();
           if (!j.playing) {
             m = null; key = ''; box.classList.add('ly-idle'); title.textContent = 'Nada tocando no PC'; artist.textContent = ''; setArt('', false);
-            chip.textContent = ''; trBtn.hidden = true;
+            chip.textContent = ''; trBtn.hidden = true; fillQueue([]);
             list.replaceChildren(); lines = []; note.textContent = '';
           } else {
             box.classList.remove('ly-idle');
             m = j.media; at = performance.now();
-            title.textContent = m.title; artist.textContent = m.artist || '';
+            title.textContent = m.title; artist.textContent = [m.artist, m.album].filter(Boolean).join(' · ');
+            fillQueue(j.queue);
             chip.textContent = `● ${m.app || 'PC'} · ${m.playing ? 'tocando' : 'pausado'}`;
             total.textContent = m.durMs > 0 ? clock(m.durMs) : '';
             showPlay();

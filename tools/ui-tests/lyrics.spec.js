@@ -35,7 +35,7 @@ const SONG = {
 test('lights up the line being sung and shows the song', async ({ page }) => {
   await open(page, SONG);
   await expect(page.locator('.ly-title')).toHaveText('Life Goes On');
-  await expect(page.locator('.ly-artist')).toHaveText('Oliver Tree');
+  await expect(page.locator('.ly-artist')).toHaveText('Oliver Tree · Ugly Is Beautiful');
   await expect(page.locator('.ly-chip')).toHaveText('● Spotify · tocando');
   await expect(page.locator('.ly-line')).toHaveCount(4);
   await expect(page.locator('.ly-line.on')).toHaveText('Babe, you best believe it');
@@ -119,4 +119,21 @@ test('no translation for a song already in Portuguese: no switch', async ({ page
   await expect(page.locator('.ly-line')).toHaveCount(4);
   await expect(page.locator('.ly-tl')).toHaveCount(0);
   await expect(page.locator('.ly-tr')).toBeHidden();
+});
+
+test('the card lists the next songs and a tap plays one', async ({ page }) => {
+  await open(page, { ...SONG, queue: [{ id: 'spotify:track:abc', name: 'Miracle Man', artist: 'Oliver Tree' }, { id: 'spotify:track:def', name: 'Hurt', artist: 'Oliver Tree' }] });
+  await expect(page.locator('.ly-q')).toHaveCount(2);
+  await expect(page.locator('.ly-q').first()).toContainText('Miracle Man');
+  await page.screenshot({ path: test.info().outputPath('lyrics-card.png') });
+  await page.evaluate(() => {
+    window.__played = [];
+    const f = window.fetch;
+    window.fetch = (url, init) => {
+      if (String(url).includes('/controls/spotify/action/')) { window.__played.push(String(url).replace(/^.*\/api/, '')); return Promise.resolve(new Response('{"ok":true}', { headers: { 'Content-Type': 'application/json' } })); }
+      return f(url, init);
+    };
+  });
+  await page.locator('.ly-q').nth(1).click();
+  expect(await page.evaluate(() => window.__played)).toEqual(['/controls/spotify/action/play-queued?id=spotify%3Atrack%3Adef']);
 });

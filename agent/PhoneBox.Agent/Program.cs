@@ -855,13 +855,21 @@ app.MapGet("/api/lyrics/now", async (string? have, MediaMonitor media, LyricsSer
     if (m is null || m.Title.Length == 0) return Results.Json(new { playing = false });
     var key = LyricsService.KeyOf(m.Title, m.Artist);
     var artistImage = m.App == "Spotify" ? await spotify.PlayingArtistImage(m.Title, ct) : null;
+    object[]? queue = null;
+    if (m.App == "Spotify")
+    {
+        var snap = await spotify.Snapshot(ct);
+        queue = (snap["queue"] as System.Text.Json.Nodes.JsonArray ?? []).Take(4)
+            .Select(q => (object)new { id = q?["id"]?.GetValue<string>(), name = q?["name"]?.GetValue<string>(), artist = q?["artist"]?.GetValue<string>() })
+            .ToArray();
+    }
     object? words = null;
     if (have != key)
     {
         var r = await lyrics.GetAsync(m.Title, m.Artist, m.Album, m.DurMs);
         words = new { lines = r.Lines.Select(l => new { t = l.T, text = l.Text }), plain = r.Plain, instrumental = r.Instrumental, found = r.Found, trans = r.Trans, lang = r.Lang };
     }
-    return Results.Json(new { playing = true, key, media = m, artistImage, lyrics = words });
+    return Results.Json(new { playing = true, key, media = m, artistImage, queue, lyrics = words });
 });
 
 app.MapGet("/api/art", (MediaMonitor media) =>
