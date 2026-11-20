@@ -1,4 +1,6 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect: expect0 } = require('@playwright/test');
+// the page asks the agent every 4 s; a test's fake answer can miss the first ask, so allow a second one
+const expect = expect0.configure({ timeout: 10000 });
 
 // Federano "Letra": the artist's photo and the timed lyrics of the song playing on the PC. The agent's answer is faked.
 test.use({ viewport: { width: 1280, height: 800 } });
@@ -41,6 +43,8 @@ test('lights up the line being sung and shows the song', async ({ page }) => {
   await expect(page.locator('.ly-line.on')).toHaveText('Babe, you best believe it');
   await expect(page.locator('.ly-line.past')).toHaveCount(2);
   await expect(page.locator('.ly-vig')).toHaveCount(1);
+  // the line being sung slides to the middle of the lyrics area
+  await expect.poll(() => page.evaluate(() => { const l = document.querySelector('.ly-lines').getBoundingClientRect(), o = document.querySelector('.ly-line.on').getBoundingClientRect(); return Math.abs((o.top + o.height / 2) - (l.top + l.height / 2)); })).toBeLessThan(12);
   await page.screenshot({ path: test.info().outputPath('lyrics.png') });
 });
 
@@ -216,7 +220,7 @@ test('a discreet button shows only the lyrics, full screen, and brings the card 
 
 test('a podcast episode gets its own screen: show, episode, date, description, 15/30 s skips, voice wave, no errors', async ({ page }) => {
   const errors = [];
-  page.on('pageerror', (e) => errors.push(String(e)));
+  page.on('pageerror', (e) => errors.push(String(e) + (process.env.DBG ? e.stack : '')));
   await open(page, {
     playing: true, key: 'ep 214\u0001café com ideias', kind: 'episode',
     media: { app: 'Spotify', title: 'Ep. 214 — Por que a gente procrastina', artist: 'Café com Ideias', album: '', playing: true, posMs: 60000, durMs: 5880000, artId: 0, canSeek: true, ageMs: 0 },
@@ -235,9 +239,8 @@ test('a podcast episode gets its own screen: show, episode, date, description, 1
   await expect(page.locator('.ly-note')).toBeHidden();
   await expect(page.locator('.ly-queue')).toBeHidden();
   await page.waitForTimeout(800);
-  // the voice wave is drawn on the background canvas
-  const drawn = await page.evaluate(() => { const c = document.querySelector('.ly-fx'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; return n; });
-  expect(drawn).toBeGreaterThan(500);
+  // the voice wave is drawn on the background canvas, by its own worker thread
+  await expect.poll(() => page.evaluate(() => +(document.querySelector('.w.ly').dataset.fxFrames || 0))).toBeGreaterThan(30);
   await page.screenshot({ path: test.info().outputPath('podcast.png') });
   expect(errors).toEqual([]);
 });

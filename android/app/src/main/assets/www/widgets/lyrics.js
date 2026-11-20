@@ -8,7 +8,7 @@ import { W } from '../registry.js';
 // sent once per song). Without timed lyrics the text is shown still.
 
 const clock = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)), p2 = (n) => String(n).padStart(2, '0'); return s >= 3600 ? `${Math.floor(s / 3600)}:${p2(Math.floor(s / 60) % 60)}:${p2(s % 60)}` : `${Math.floor(s / 60)}:${p2(s % 60)}`; };
-const LEAD = 350;   // show a line a little before it is sung
+const LEAD = 250;   // light a line a moment before it is sung (its slide into the middle takes a little time)
 
 // ---- background: the artist's photo blurred behind the lyrics, and many thin lines waving together like fabric. The
 // lines follow the PC's sound (the agent's spectrum analyser, the same as the Spectrum bars widget) and take the
@@ -26,7 +26,7 @@ function weave(g, W, H, st, cols) {
     // depth: three layers; near lines sharper, bolder and faster, far ones softer and slower
     const layer = k % 3, depth = [1, .7, .45][layer];
     // the cover's colours drift slowly from line to line
-    const ci = (k + t * .35) % rgb.length, c0 = rgb[Math.floor(ci)], c1 = rgb[(Math.floor(ci) + 1) % rgb.length], fr = ci % 1;
+    const L = rgb.length, ci = (((k + t * .35) % L) + L) % L || 0, c0 = rgb[Math.floor(ci)], c1 = rgb[(Math.floor(ci) + 1) % rgb.length], fr = ci % 1;
     const col = c0.map((v, i) => Math.round(v + (c1[i] - v) * fr)).join(',');
     // the bottom lines follow the bass, the middle ones the voice, the top ones the highs
     const lvl = (f > .6 ? st.bass : f < .35 ? st.high : st.mid) * 1.3;
@@ -65,6 +65,39 @@ function voiceWave(g, W, H, st, cols) {
     g.lineWidth = (9 - k * 2) * s; g.globalAlpha = .18; g.stroke(); g.globalAlpha = 1;
     g.lineWidth = (3 - k * .7) * s; g.stroke();
   }
+}
+
+// the worker's own loop: same smoothing and beat as on the page; the page only sends the sound levels and the state
+function fxWorker() {
+  let cv = null, g = null, cols = ['150,120,220', '120,90,200', '200,120,180', '90,140,220'];
+  const st = { bass: .3, mid: .3, high: .3, avgBass: .3, pulse: 0, lastBeat: 0, act: 1, ph: 0, lastMs: 0, now: 0, waveAt: -1e9, voice: 0 };
+  const inp = { nb: .3, nm: .3, nh: .3, bands: false, playing: false, pod: false, vis: true };
+  const raf = self.requestAnimationFrame ? (f) => self.requestAnimationFrame(f) : (f) => setTimeout(() => f(performance.now()), 16);
+  let frames = 0;
+  function loop() {
+    raf(loop);
+    const ms = performance.now();   // the worker's own clock (the frame time it is given can come from another one)
+    if (!inp.vis || !cv.width) return;
+    if (++frames % 30 === 0) self.postMessage({ frames });   // a heartbeat for the page (and the tests)
+    st.bass += (inp.nb - st.bass) * .18; st.mid += (inp.nm - st.mid) * .15; st.high += (inp.nh - st.high) * .15;
+    st.avgBass += (inp.nb - st.avgBass) * .03;
+    if (inp.playing && inp.bands && inp.nb > st.avgBass * 1.35 + .08 && ms - st.lastBeat > 280) { st.pulse = 1; st.lastBeat = ms; }
+    const dt = Math.min(50, ms - (st.lastMs || ms));
+    st.pulse *= Math.pow(.88, dt / 16.7);
+    st.act += ((inp.playing ? 1 : .06) - st.act) * .05;
+    st.ph += dt / 1000 * (.5 + .7 * st.act);
+    st.lastMs = ms; st.now = ms;
+    if (inp.pod) { st.voice += (inp.nm * 1.4 - st.voice) * .12; voiceWave(g, cv.width, cv.height, st, cols); }
+    else weave(g, cv.width, cv.height, st, cols);
+  }
+  self.onmessage = (e) => {
+    const d = e.data;
+    if (d.canvas) { cv = d.canvas; g = cv.getContext('2d'); raf(loop); }
+    if (d.size && cv && (cv.width !== d.size[0] || cv.height !== d.size[1])) { cv.width = d.size[0]; cv.height = d.size[1]; }
+    if (d.inp) Object.assign(inp, d.inp);
+    if (d.cols) cols = d.cols;
+    if (d.wave) st.waveAt = performance.now();
+  };
 }
 
 /** The cover's own colours: its pixels grouped by hue, the four strongest groups (vivid and common first), each
@@ -131,7 +164,8 @@ W.lyrics = {
     const bBack = btn('ly-back', SVG.back, 'Voltar 10 segundos'), bPrev = btn('ly-prev', SVG.prev, 'Música anterior');
     const bPlay = btn('ly-play', SVG.pause, 'Play / pausa'), bNext = btn('ly-next', SVG.next, 'Próxima música'), bFwd = btn('ly-fwd', SVG.fwd, 'Avançar 10 segundos');
     const ctl = h('div', 'ly-ctl', bBack, bPrev, bPlay, bNext, bFwd);
-    const list = h('div', 'ly-lines');
+    const inner = h('div', 'ly-inner');
+    const list = h('div', 'ly-lines', inner);
     // podcast episode: show, episode name, date / length / publisher and the description, where the lyrics go
     const pShow = h('div', 'ly-pshow', ''), pName = h('div', 'ly-pname', ''), pMeta = h('div', 'ly-pmeta', ''), pDesc = h('div', 'ly-pdesc', '');
     const pod = h('div', 'ly-pod', pShow, pName, pMeta, pDesc);
@@ -161,19 +195,38 @@ W.lyrics = {
     const vig = h('div', 'ly-vig');
     const fxs = { bass: .3, mid: .3, high: .3, avgBass: .3, pulse: 0, lastBeat: 0, act: 1, ph: 0, lastMs: 0, now: 0, waveAt: -1e9, voice: 0 };
     let cols = ['150,120,220', '120,90,200', '200,120,180', '90,140,220'], lastWant = 0, raf = 0, lastFrame = 0;
+    let worker = null, sent = '';
+    if (fx.transferControlToOffscreen && typeof Worker === 'function' && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      try {
+        const url = URL.createObjectURL(new Blob([`${weave}\n${voiceWave}\n(${fxWorker})();`], { type: 'text/javascript' }));
+        worker = new Worker(url);
+        worker.onmessage = (e) => { box.dataset.fxFrames = e.data.frames; };
+        const off = fx.transferControlToOffscreen();
+        worker.postMessage({ canvas: off, cols }, [off]);
+      } catch (_) { worker = null; }
+    }
+    const wave = () => { if (worker) worker.postMessage({ wave: 1 }); else fxs.waveAt = performance.now(); };
     function animate(ms) {
       raf = requestAnimationFrame(animate);
-      if (!visible() || ms - lastFrame < 15) return;   // the tablet is always plugged in: up to 60 fps
+      if (!visible()) { if (worker && sent !== 'off') { sent = 'off'; worker.postMessage({ inp: { vis: false } }); } return; }
+      if (ms - lastFrame < 15) return;   // the tablet is always plugged in: up to 60 fps
       lastFrame = ms;
       const w = Math.round(fx.clientWidth), hgt = Math.round(fx.clientHeight);
       if (!w || !hgt) return;
       const cw = Math.round(w * .6), ch = Math.round(hgt * .6);
-      if (fx.width !== cw || fx.height !== ch) { fx.width = cw; fx.height = ch; }
+      if (!worker && (fx.width !== cw || fx.height !== ch)) { fx.width = cw; fx.height = ch; }
       // the PC's sound (48 bands): bass, voice and highs, smoothed; a beat when the bass jumps well over its average
       const bands = Date.now() - (D.spectrumAt || 0) < 800 ? D.spectrum : null;
       const playing = !!(m && m.playing);
       const part = (a, b) => bands ? Math.min(1, bands.slice(a, b).reduce((x, v) => x + v, 0) / (b - a) / 60) : .3;
       const nb = part(0, 10), nm = part(10, 30), nh = part(30, 48);
+      // the line being sung is checked every frame (not 7 times a second): it lights up right on time
+      lineCheck();
+      if (worker) {
+        const msg = { nb, nm, nh, bands: !!bands, playing, pod: podMode, vis: true };
+        const key2 = `${nb.toFixed(3)}|${nm.toFixed(3)}|${nh.toFixed(3)}|${playing}|${podMode}|${cw}x${ch}`;
+        if (key2 !== sent) { sent = key2; worker.postMessage({ inp: msg, size: [cw, ch] }); }
+      } else {
       fxs.bass += (nb - fxs.bass) * .25; fxs.mid += (nm - fxs.mid) * .2; fxs.high += (nh - fxs.high) * .2;
       fxs.avgBass += (nb - fxs.avgBass) * .03;
       if (playing && bands && nb > fxs.avgBass * 1.35 + .08 && ms - fxs.lastBeat > 280) { fxs.pulse = 1; fxs.lastBeat = ms; }
@@ -184,9 +237,8 @@ W.lyrics = {
       fxs.now = ms;
       if (podMode) { fxs.voice += (nm * 1.4 - fxs.voice) * .15; voiceWave(fx.getContext('2d'), cw, ch, fxs, cols); }
       else weave(fx.getContext('2d'), cw, ch, fxs, cols);
-      // the vignette breathes (a little darker on the beat); the blurred photo slowly zooms in and out
-      vig.style.opacity = ((.55 + .3 * Math.sin(ms / 2600)) * (playing ? 1 : .7) + .15 * fxs.pulse).toFixed(3);
-      bgPhoto.style.transform = `scale(${(1 + .04 * Math.sin(ms / 4000)).toFixed(4)})`;
+      }
+      // the vignette's breathing and the photo's slow zoom are CSS animations: the GPU runs them on its own
       // keep the agent's analyser running while this page shows (it stops a few seconds after the last ask)
       if (Date.now() - lastWant > 2000) {
         lastWant = Date.now();
@@ -276,18 +328,19 @@ W.lyrics = {
     setPod(false);
     // tap a line: the song jumps there (like Spotify)
     // scrolling the lyrics by hand: the page stops following the song for a while, so a later line can be picked
-    let handUntil = 0, glideRaf = 0, glideTo = -1;
-    const byHand = () => { handUntil = Date.now() + 6000; cancelAnimationFrame(glideRaf); glideTo = -1; };
+    let handUntil = 0;
+    const byHand = () => { handUntil = Date.now() + 6000; inner.style.transition = 'none'; inner.style.transform = ''; };
+    // jump the scroll to the new place at once, then let the lines slide there smoothly on the GPU (FLIP)
     function glide(top) {
-      if (Math.abs(top - glideTo) < 2 || Math.abs(top - list.scrollTop) < 2) return;
-      cancelAnimationFrame(glideRaf); glideTo = top;
-      const from = list.scrollTop, t0 = performance.now(), D = 320;
-      const step = (now) => {
-        const k = Math.min(1, (now - t0) / D), e = 1 - (1 - k) ** 3;
-        list.scrollTop = from + (top - from) * e;
-        if (k < 1) glideRaf = requestAnimationFrame(step); else glideTo = -1;
-      };
-      glideRaf = requestAnimationFrame(step);
+      const from = list.scrollTop;
+      if (Math.abs(top - from) < 2) return;
+      list.scrollTop = top;
+      const d = list.scrollTop - from;
+      inner.style.transition = 'none';
+      inner.style.transform = `translate3d(0,${d.toFixed(1)}px,0)`;
+      void inner.offsetHeight;
+      inner.style.transition = 'transform .5s cubic-bezier(.25,.8,.3,1)';
+      inner.style.transform = 'translate3d(0,0,0)';
     }
     for (const ev of ['touchstart', 'touchmove', 'wheel', 'pointerdown']) list.addEventListener(ev, byHand, { passive: true });
     list.addEventListener('click', (e) => {
@@ -321,6 +374,7 @@ W.lyrics = {
         let pal;
         try { pal = coverPalette(probe); } catch (_) { return; }
         cols = pal.map((c) => c.join(','));
+        if (worker) worker.postMessage({ cols });
         const [a, b2] = pal, dark = (c, k) => `rgb(${c.map((v) => Math.round(v * k)).join(',')})`;
         box.style.setProperty('--ly-bg', dark(a, .34));
         box.style.setProperty('--ly-bg2', dark(b2, .16));
@@ -331,7 +385,7 @@ W.lyrics = {
       probe.src = `${API}/art?v=${m.artId}`;
     }
     function fillLines(data) {
-      list.replaceChildren(); lines = []; active = -2;
+      inner.replaceChildren(); lines = []; active = -2;
       box.classList.remove('ly-plain', 'ly-none');
       note.textContent = '';
       const tr = Array.isArray(data?.trans) ? data.trans : null;
@@ -344,25 +398,29 @@ W.lyrics = {
       }
       if (data.lines?.length) {
         lines = data.lines.map((l, i) => { const el = line(l.text || '♪', i, l.text ? '' : ' ly-gap'); el.dataset.t = l.t; return { t: l.t, el }; });
-        list.append(...lines.map((l) => l.el));
+        inner.append(...lines.map((l) => l.el));
       } else {
         box.classList.add('ly-plain');
-        list.append(...data.plain.split('\n').map((t, i) => line(t.trim() || ' ', i)));
+        inner.append(...data.plain.split('\n').map((t, i) => line(t.trim() || ' ', i)));
       }
       list.scrollTop = 0;
     }
     function draw() {
       if (!m) return;
-      const p = pos();
-      now.textContent = clock(p);
+      const p = pos(), c = clock(p);
+      if (now.textContent !== c) now.textContent = c;
       fill.style.width = m.durMs > 0 ? (p / m.durMs * 100).toFixed(2) + '%' : '0';
-      if (!lines.length) return;
+      lineCheck();
+    }
+    function lineCheck() {
+      if (!m || !lines.length) return;
+      const p = pos();
       let i = -1;
       for (let k = 0; k < lines.length; k++) { if (lines[k].t <= p + LEAD) i = k; else break; }
       const hand = Date.now() < handUntil;
       if (i === active && !(follow && !hand)) return;
       if (i !== active) {
-        if (i > active && active >= 0) fxs.waveAt = performance.now();
+        if (i > active && active >= 0) wave();
         active = i;
         lines.forEach((l, k) => { l.el.classList.toggle('on', k === i); l.el.classList.toggle('past', k < i); });
       }
@@ -370,7 +428,9 @@ W.lyrics = {
       if (hand) return;
       // the line being sung goes to the middle
       const el = lines[Math.max(0, i)].el;
-      glide(Math.max(0, Math.min(list.scrollHeight - list.clientHeight, el.offsetTop + el.offsetHeight / 2 - list.clientHeight / 2)));
+      // the line's place inside the scrolling list (the sliding inner block counts as the line's offset parent)
+      const y = el.offsetTop + (el.offsetParent === inner ? inner.offsetTop : 0);
+      glide(Math.max(0, Math.min(list.scrollHeight - list.clientHeight, y + el.offsetHeight / 2 - list.clientHeight / 2)));
     }
     async function poll() {
       if (!alive) return;
@@ -381,7 +441,7 @@ W.lyrics = {
           if (!j.playing) {
             setPod(false); m = null; key = ''; box.classList.add('ly-idle'); title.textContent = 'Nada tocando no Spotify'; artist.textContent = ''; setArt('', false);
             chip.textContent = ''; trBtn.hidden = true; lastQueue = []; fillQueue([]);
-            list.replaceChildren(); lines = []; note.textContent = '';
+            inner.replaceChildren(); lines = []; note.textContent = '';
           } else {
             box.classList.remove('ly-idle');
             m = j.media; at = performance.now();
@@ -403,7 +463,7 @@ W.lyrics = {
               lastQueue = []; fillQueue([]);
               setArt(ep.image || (m.artId ? `${API}/art?v=${m.artId}` : ''), false);
               tint();
-              if (j.key !== key) { key = j.key; pendingKey = ''; list.replaceChildren(); lines = []; active = -2; trBtn.hidden = true; note.textContent = ''; box.classList.remove('ly-plain', 'ly-none'); }
+              if (j.key !== key) { key = j.key; pendingKey = ''; inner.replaceChildren(); lines = []; active = -2; trBtn.hidden = true; note.textContent = ''; box.classList.remove('ly-plain', 'ly-none'); }
               draw();
               timer = setTimeout(poll, visible() ? 4000 : 8000);
               return;
@@ -415,7 +475,7 @@ W.lyrics = {
               if (j.lyrics) { key = j.key; pendingKey = ''; fillLines(j.lyrics); }
               else if (j.pending && pendingKey !== j.key) {
                 // the new song shows at once; its lyrics arrive on the next calls
-                pendingKey = j.key; list.replaceChildren(); lines = []; active = -2; trBtn.hidden = true;
+                pendingKey = j.key; inner.replaceChildren(); lines = []; active = -2; trBtn.hidden = true;
                 box.classList.remove('ly-plain', 'ly-none'); note.textContent = 'Carregando a letra…';
               }
             }
@@ -439,7 +499,7 @@ W.lyrics = {
       if (s.title !== m.title || s.app !== m.app) return;
       if (Date.now() < holdUntil) return;   // a control just used: its own answer is newer
       const p = s.posMs + (s.playing ? performance.now() - s.at : 0);
-      if (s.playing !== m.playing || Math.abs(p + (s.playing ? offset : 0) - pos()) > 700) {
+      if (s.playing !== m.playing || Math.abs(p + (s.playing ? offset : 0) - pos()) > 300) {
         m = { ...m, playing: s.playing, posMs: p, ageMs: 0, durMs: s.durMs || m.durMs }; at = performance.now();
         showPlay(); active = -2;
       }
@@ -450,7 +510,7 @@ W.lyrics = {
     poll();
     return {
       update() {},
-      destroy() { alive = false; clearTimeout(timer); clearInterval(ticker); cancelAnimationFrame(raf); },
+      destroy() { alive = false; clearTimeout(timer); clearInterval(ticker); cancelAnimationFrame(raf); if (worker) worker.terminate(); },
     };
   },
 };

@@ -1508,3 +1508,12 @@ body.controls-top .ap-foot { order: -1; margin-bottom: 4px; }
 /* lyrics page, smoother: the blurred photo is a tiny pre-blurred canvas scaled up (no CSS filter) */
 .ly-bgphoto { filter: none; object-fit: fill; transform: translateZ(0); }
 .ly-line { text-shadow: 0 1px 4px rgba(0, 0, 0, .35); }
+/* lyrics page, smoothest: the lines slide on the GPU; the vignette and the photo breathe as CSS animations */
+.ly-inner { will-change: transform; }
+.ly-line { transition: color .3s ease-out, transform .3s cubic-bezier(.25,.8,.3,1); }
+.ly-bgphoto { animation: ly-zoom 16s ease-in-out infinite alternate; }
+@keyframes ly-zoom { from { transform: scale(1); } to { transform: scale(1.08); } }
+.ly-vig { animation: ly-breathe 8s ease-in-out infinite alternate; }
+@keyframes ly-breathe { from { opacity: .3; } to { opacity: .85; } }
+.w.ly.ly-paused .ly-vig { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .ly-bgphoto, .ly-vig { animation: none; } .ly-inner { transition: none !important; } }
