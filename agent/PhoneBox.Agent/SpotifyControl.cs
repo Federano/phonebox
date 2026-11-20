@@ -302,7 +302,10 @@ public sealed class SpotifyControl : IDisposable
             async Task<(string? Id, string Name)> Computer()
             {
                 var devices = (await Request(HttpMethod.Get, "me/player/devices", null, ct))?["devices"] as JsonArray ?? [];
-                var d = devices.FirstOrDefault(x => x?["type"]?.GetValue<string>() == "Computer");
+                // the Spotify app on this PC is named after the computer; a "Web Player" tab is not the app
+                var computers = devices.Where(x => x?["type"]?.GetValue<string>() == "Computer").ToList();
+                var d = computers.FirstOrDefault(x => string.Equals(x?["name"]?.GetValue<string>(), Environment.MachineName, StringComparison.OrdinalIgnoreCase))
+                    ?? computers.FirstOrDefault(x => x?["name"]?.GetValue<string>()?.StartsWith("Web Player", StringComparison.OrdinalIgnoreCase) == false);
                 return (d?["id"]?.GetValue<string>() is { Length: > 0 } found ? found : null, d?["name"]?.GetValue<string>() ?? "");
             }
             var pinned = _config.Get().Controls.SpotifyDevice;
