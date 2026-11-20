@@ -2,9 +2,10 @@ import { API, PANEL_HEADERS, averageColor, curPage, h, haptic, pages, toast } fr
 import { W } from '../registry.js';
 
 // ---------------------------------------------------------------- Federano "Letra"
-// The song playing on the PC: the artist's photo on one side (Spotify) and the lyrics on the other, the line being sung
-// lit up and kept in view, like Spotify's lyrics screen. Data: GET /api/lyrics/now (lyrics from LRCLIB, sent once per
-// song). Without timed lyrics the text is shown still; without lyrics the photo takes the whole widget.
+// The song playing on the PC: the artist's photo (Spotify) fills the background, the lyrics sit in the middle with the
+// line being sung lit up and kept at the centre, a Portuguese translation under each line (switch "Tradução"), and a
+// bar at the bottom with the song and the controls. Data: GET /api/lyrics/now (lyrics from LRCLIB and the translation,
+// sent once per song). Without timed lyrics the text is shown still.
 
 const clock = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const LEAD = 350;   // show a line a little before it is sung
@@ -21,8 +22,10 @@ W.lyrics = {
   needs: [],
   create(box, { page }) {
     box.classList.add('ly');
-    const img = h('img', 'ly-img'); img.alt = '';
-    const shade = h('div', 'ly-shade');
+    const img = h('img', 'ly-bgimg'); img.alt = '';
+    const thumb = h('img', 'ly-thumb'); thumb.alt = '';
+    const chip = h('div', 'ly-chip', '');
+    const trBtn = h('button', 'ly-tr', h('i'), 'Tradução'); trBtn.hidden = true;
     const title = h('div', 'ly-title', '');
     const artist = h('div', 'ly-artist', '');
     const fill = h('i');
@@ -33,11 +36,16 @@ W.lyrics = {
     const bBack = btn('ly-back', SVG.back, 'Voltar 10 segundos'), bPrev = btn('ly-prev', SVG.prev, 'Música anterior');
     const bPlay = btn('ly-play', SVG.pause, 'Play / pausa'), bNext = btn('ly-next', SVG.next, 'Próxima música'), bFwd = btn('ly-fwd', SVG.fwd, 'Avançar 10 segundos');
     const ctl = h('div', 'ly-ctl', bBack, bPrev, bPlay, bNext, bFwd);
-    const side = h('div', 'ly-side', img, shade, h('div', 'ly-info', title, artist, bar, times, ctl));
     const list = h('div', 'ly-lines');
     const note = h('div', 'ly-note', '');
-    const words = h('div', 'ly-words', list, note);
-    box.append(side, words);
+    box.append(img, h('div', 'ly-veil'), h('div', 'ly-top', chip, trBtn), h('div', 'ly-words', list, note),
+      h('div', 'ly-dock', thumb, h('div', 'ly-meta', title, artist), h('div', 'ly-prog', bar, times), ctl));
+    // translation on/off, remembered on this panel
+    let showTr = true;
+    try { showTr = localStorage.getItem('federano.lyricsTr') !== '0'; } catch (_) {}
+    const applyTr = () => { box.classList.toggle('ly-show-tr', showTr); trBtn.classList.toggle('on', showTr); };
+    applyTr();
+    trBtn.onclick = () => { haptic(); showTr = !showTr; applyTr(); try { localStorage.setItem('federano.lyricsTr', showTr ? '1' : '0'); } catch (_) {} active = -2; draw(); };
 
     let alive = true, key = '', lines = [], active = -2, m = null, at = 0, artId = -1, timer = 0;
     const visible = () => pages[curPage] === page && !document.body.classList.contains('night');
@@ -55,7 +63,11 @@ W.lyrics = {
       } catch (_) { toast('Sem conexão com o PC.', 'err'); }
       setTimeout(() => { clearTimeout(timer); poll(); }, 900);
     }
-    const showPlay = () => { bPlay.innerHTML = m && m.playing ? SVG.pause : SVG.play; box.classList.toggle('ly-paused', !!m && !m.playing); };
+    const showPlay = () => {
+      bPlay.innerHTML = m && m.playing ? SVG.pause : SVG.play;
+      box.classList.toggle('ly-paused', !!m && !m.playing);
+      if (m) chip.textContent = `● ${m.app || 'PC'} · ${m.playing ? 'tocando' : 'pausado'}`;
+    };
     const jumpTo = (ms) => { if (!m) return; m = { ...m, posMs: Math.max(0, Math.min(m.durMs || Infinity, ms)), ageMs: 0 }; at = performance.now(); active = -2; draw(); };
     bPlay.onclick = () => media('playpause', '', () => { if (m) { m = { ...m, posMs: pos(), ageMs: 0, playing: !m.playing }; at = performance.now(); showPlay(); } });
     bBack.onclick = () => media('seekby', '?ms=-10000', () => jumpTo(pos() - 10000));
@@ -80,7 +92,7 @@ W.lyrics = {
       img.dataset.src = src || '';
       box.classList.toggle('ly-noart', !src);
       box.classList.toggle('ly-artist-photo', !!isArtist);
-      if (src) img.src = src; else img.removeAttribute('src');
+      for (const el of [img, thumb]) { if (src) el.src = src; else el.removeAttribute('src'); }
     }
     function tint() {
       // the background takes the cover's colour (same-origin /api/art, so it can be read)
@@ -97,17 +109,20 @@ W.lyrics = {
       list.replaceChildren(); lines = []; active = -2;
       box.classList.remove('ly-plain', 'ly-none');
       note.textContent = '';
+      const tr = Array.isArray(data?.trans) ? data.trans : null;
+      trBtn.hidden = !tr;
+      const line = (text, i, cls) => { const el = h('div', 'ly-line' + (cls || ''), text); if (tr && tr[i]) el.append(h('span', 'ly-tl', tr[i])); return el; };
       if (!data || !data.found || data.instrumental || (!data.lines?.length && !data.plain)) {
         box.classList.add('ly-none');
         note.textContent = data?.instrumental ? 'Instrumental' : 'Letra não encontrada para esta música.';
         return;
       }
       if (data.lines?.length) {
-        lines = data.lines.map((l) => { const el = h('div', 'ly-line' + (l.text ? '' : ' ly-gap'), l.text || '♪'); el.dataset.t = l.t; return { t: l.t, el }; });
+        lines = data.lines.map((l, i) => { const el = line(l.text || '♪', i, l.text ? '' : ' ly-gap'); el.dataset.t = l.t; return { t: l.t, el }; });
         list.append(...lines.map((l) => l.el));
       } else {
         box.classList.add('ly-plain');
-        list.append(...data.plain.split('\n').map((t) => h('div', 'ly-line', t || ' ')));
+        list.append(...data.plain.split('\n').map((t, i) => line(t.trim() || ' ', i)));
       }
       list.scrollTop = 0;
     }
@@ -122,8 +137,9 @@ W.lyrics = {
       if (i === active) return;
       active = i;
       lines.forEach((l, k) => { l.el.classList.toggle('on', k === i); l.el.classList.toggle('past', k < i); });
+      // the line being sung goes to the middle
       const el = lines[Math.max(0, i)].el;
-      list.scrollTo({ top: Math.max(0, el.offsetTop - list.clientHeight * .38), behavior: 'smooth' });
+      list.scrollTo({ top: Math.max(0, el.offsetTop + el.offsetHeight / 2 - list.clientHeight / 2), behavior: 'smooth' });
     }
     async function poll() {
       if (!alive) return;
@@ -133,11 +149,13 @@ W.lyrics = {
           const j = await r.json();
           if (!j.playing) {
             m = null; key = ''; box.classList.add('ly-idle'); title.textContent = 'Nada tocando no PC'; artist.textContent = ''; setArt('', false);
+            chip.textContent = ''; trBtn.hidden = true;
             list.replaceChildren(); lines = []; note.textContent = '';
           } else {
             box.classList.remove('ly-idle');
             m = j.media; at = performance.now();
-            title.textContent = m.title; artist.textContent = [m.artist, m.app].filter(Boolean).join(' · ');
+            title.textContent = m.title; artist.textContent = m.artist || '';
+            chip.textContent = `● ${m.app || 'PC'} · ${m.playing ? 'tocando' : 'pausado'}`;
             total.textContent = m.durMs > 0 ? clock(m.durMs) : '';
             showPlay();
             setArt(j.artistImage || (m.artId ? `${API}/art?v=${m.artId}` : ''), !!j.artistImage);

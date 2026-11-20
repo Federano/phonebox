@@ -35,7 +35,8 @@ const SONG = {
 test('lights up the line being sung and shows the song', async ({ page }) => {
   await open(page, SONG);
   await expect(page.locator('.ly-title')).toHaveText('Life Goes On');
-  await expect(page.locator('.ly-artist')).toHaveText('Oliver Tree · Spotify');
+  await expect(page.locator('.ly-artist')).toHaveText('Oliver Tree');
+  await expect(page.locator('.ly-chip')).toHaveText('● Spotify · tocando');
   await expect(page.locator('.ly-line')).toHaveCount(4);
   await expect(page.locator('.ly-line.on')).toHaveText('Babe, you best believe it');
   await expect(page.locator('.ly-line.past')).toHaveCount(2);
@@ -98,4 +99,24 @@ test('a song on Spotify opens the lyrics page by itself', async ({ page }) => {
   await page.reload();
   // the demo plays a song on Spotify: the panel moves to the lyrics page
   await expect(page.locator('#dots i').nth(1)).toHaveClass(/on/, { timeout: 15000 });
+});
+
+test('translation under each line, switched on and off', async ({ page }) => {
+  const tr = ['Sem parar', 'Sem parar, sem parar', 'Pode acreditar', 'Sou de amar, não de brigar'];
+  await open(page, { ...SONG, lyrics: { ...SONG.lyrics, trans: tr, lang: 'en' } });
+  await expect(page.locator('.ly-tl')).toHaveCount(4);
+  await expect(page.locator('.ly-line.on .ly-tl')).toHaveText('Pode acreditar');
+  await expect(page.locator('.ly-tr')).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath('lyrics-tr.png') });
+  await page.locator('.ly-tr').click();
+  await expect(page.locator('.ly-line.on .ly-tl')).toBeHidden();
+  await page.locator('.ly-tr').click();
+  await expect(page.locator('.ly-line.on .ly-tl')).toBeVisible();
+});
+
+test('no translation for a song already in Portuguese: no switch', async ({ page }) => {
+  await open(page, { ...SONG, lyrics: { ...SONG.lyrics, trans: null, lang: 'pt' } });
+  await expect(page.locator('.ly-line')).toHaveCount(4);
+  await expect(page.locator('.ly-tl')).toHaveCount(0);
+  await expect(page.locator('.ly-tr')).toBeHidden();
 });

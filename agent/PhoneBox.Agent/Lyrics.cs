@@ -14,7 +14,10 @@ public sealed partial class LyricsService(ILogger<LyricsService> log)
 {
     public sealed record Line(long T, string Text);
     /// <param name="Lines">Timed lines (empty when only plain text or nothing was found).</param>
-    public sealed record Result(string Key, IReadOnlyList<Line> Lines, string Plain, bool Instrumental, bool Found);
+    /// <param name="Trans">Portuguese translation, one per line (the timed lines, else the plain text's lines); null when
+    /// the song is already in Portuguese or the translation failed.</param>
+    public sealed record Result(string Key, IReadOnlyList<Line> Lines, string Plain, bool Instrumental, bool Found,
+        IReadOnlyList<string>? Trans = null, string Lang = "");
 
     static readonly HttpClient Http = MakeClient();
     static HttpClient MakeClient()
@@ -57,7 +60,10 @@ public sealed partial class LyricsService(ILogger<LyricsService> log)
             var synced = hit["syncedLyrics"]?.GetValue<string>() ?? "";
             var plain = hit["plainLyrics"]?.GetValue<string>() ?? "";
             var instrumental = hit["instrumental"]?.GetValue<bool>() == true;
-            return new(key, ParseLrc(synced), plain, instrumental, true);
+            var lines = ParseLrc(synced);
+            var texts = lines.Count > 0 ? lines.Select(l => l.Text).ToList() : plain.Split('\n').Select(t => t.Trim()).ToList();
+            var (trans, lang) = instrumental ? (null, "") : await TranslateAsync(texts);
+            return new(key, lines, plain, instrumental, true, trans, lang);
         }
         catch (Exception ex)
         {
@@ -65,6 +71,69 @@ public sealed partial class LyricsService(ILogger<LyricsService> log)
             _ = Task.Delay(TimeSpan.FromMinutes(1)).ContinueWith(_ => _cache.TryRemove(key, out var _));
             return new(key, [], "", false, false);
         }
+    }
+
+    // ---- translation into Portuguese (Google Translate's free web endpoint, no account): the song's lines, once per song
+    static readonly HttpClient Gt = MakeGt();
+    static HttpClient MakeGt()
+    {
+        var h = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        h.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0");
+        return h;
+    }
+
+    /// <summary>The lines in Portuguese, one per line (empty lines stay empty), and the detected language. Null when
+    /// the lyrics are already Portuguese or the service did not answer as expected.</summary>
+    internal async Task<(IReadOnlyList<string>? Trans, string Lang)> TranslateAsync(IReadOnlyList<string> texts)
+    {
+        try
+        {
+            var unique = texts.Where(t => t.Length > 0).Distinct().ToList();
+            if (unique.Count == 0) return (null, "");
+            var map = new Dictionary<string, string>();
+            var lang = "";
+            // a few lines per request, joined by new lines; a chunk whose lines do not come back one-to-one goes line by line
+            foreach (var chunk in Chunks(unique, 3500))
+            {
+                var (out1, l1) = await TranslateText(string.Join('\n', chunk));
+                if (lang.Length == 0) lang = l1;
+                if (lang.StartsWith("pt", StringComparison.OrdinalIgnoreCase)) return (null, lang);
+                var parts = out1.Split('\n');
+                if (parts.Length == chunk.Count) { for (var i = 0; i < chunk.Count; i++) map[chunk[i]] = parts[i].Trim(); continue; }
+                foreach (var line in chunk) map[line] = (await TranslateText(line)).Text.Trim();
+            }
+            return (texts.Select(t => t.Length == 0 ? "" : map.GetValueOrDefault(t, "")).ToList(), lang);
+        }
+        catch (Exception ex) { log.LogInformation("lyrics translation: {Error}", ex.Message); return (null, ""); }
+    }
+
+    static IEnumerable<List<string>> Chunks(List<string> lines, int maxChars)
+    {
+        var cur = new List<string>(); var size = 0;
+        foreach (var l in lines)
+        {
+            if (cur.Count > 0 && size + l.Length + 1 > maxChars) { yield return cur; cur = []; size = 0; }
+            cur.Add(l); size += l.Length + 1;
+        }
+        if (cur.Count > 0) yield return cur;
+    }
+
+    static async Task<(string Text, string Lang)> TranslateText(string text)
+    {
+        using var body = new FormUrlEncodedContent([new("q", text)]);
+        using var res = await Gt.PostAsync("https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=pt&dt=t&ie=UTF-8&oe=UTF-8", body);
+        res.EnsureSuccessStatusCode();
+        return ParseGoogle(await res.Content.ReadAsStringAsync());
+    }
+
+    /// <summary>[[["tradução","original",…],…],null,"en",…] → ("tradução…", "en").</summary>
+    internal static (string Text, string Lang) ParseGoogle(string json)
+    {
+        var root = JsonNode.Parse(json) as JsonArray ?? throw new FormatException("not an array");
+        var sb = new System.Text.StringBuilder();
+        foreach (var seg in root[0] as JsonArray ?? []) if (seg is JsonArray a && a.Count > 0 && a[0] is JsonValue v && v.TryGetValue<string>(out var t)) sb.Append(t);
+        var lang = root.Count > 2 && root[2] is JsonValue lv && lv.TryGetValue<string>(out var l) ? l : "";
+        return (sb.ToString(), lang);
     }
 
     [GeneratedRegex(@"\[(\d+):(\d+(?:\.\d+)?)\]")]

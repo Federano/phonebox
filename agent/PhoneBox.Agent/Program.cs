@@ -859,7 +859,7 @@ app.MapGet("/api/lyrics/now", async (string? have, MediaMonitor media, LyricsSer
     if (have != key)
     {
         var r = await lyrics.GetAsync(m.Title, m.Artist, m.Album, m.DurMs);
-        words = new { lines = r.Lines.Select(l => new { t = l.T, text = l.Text }), plain = r.Plain, instrumental = r.Instrumental, found = r.Found };
+        words = new { lines = r.Lines.Select(l => new { t = l.T, text = l.Text }), plain = r.Plain, instrumental = r.Instrumental, found = r.Found, trans = r.Trans, lang = r.Lang };
     }
     return Results.Json(new { playing = true, key, media = m, artistImage, lyrics = words });
 });

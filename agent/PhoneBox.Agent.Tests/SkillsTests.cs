@@ -195,3 +195,14 @@ public class ShowLyricsSkillTests
         Assert.Equal("lyrics", s?.Page);
     }
 }
+
+public class LyricsTranslationTests
+{
+    [Fact]
+    public void ReadsGoogleAnswer()
+    {
+        var (text, lang) = LyricsService.ParseGoogle("""[[["As luzes da cidade\n","City lights\n",null,null,10],["Eu dirijo","I drive",null,null,10]],null,"en",null]""");
+        Assert.Equal("As luzes da cidade\nEu dirijo", text);
+        Assert.Equal("en", lang);
+    }
+}
