@@ -4,7 +4,7 @@
 body[data-theme="nightcity"] {
   --nc-y: #fcee0a; --nc-c: #00f0ff; --nc-r: #ff2a4d; --nc-panel: rgba(13, 17, 23, 0.9);
   --bg: #07080c; --card: rgba(13, 17, 23, 0.9); --card-hi: rgba(252, 238, 10, 0.08); --line: rgba(252, 238, 10, 0.32);
-  --text: #e8f6f7; --muted: #7d979c; --dim: #4f6468;
+  --text: #eef9fa; --muted: #a3bcc0; --dim: #7d979c;
   --cpu: #00f0ff; --gpu: #fcee0a; --ram: #ff2a4d; --net: #fcee0a; --up: #00f0ff; --ok: #00f0ff; --err: #ff2a4d;
   --ambient: 252, 238, 10; --accent: #fcee0a;
   font-family: "Share Tech Mono", "Roboto Mono", ui-monospace, monospace;
@@ -115,3 +115,21 @@ body[data-theme="nightcity"] .mirror-bubble-icon { border-radius: 0; border-colo
 /* night and dimmed states keep their own look */
 body[data-theme="nightcity"].night :is(.nc-rain, .nc-sweep, .nc-sky) { display: none; }
 @media (prefers-reduced-motion: reduce) { body[data-theme="nightcity"] * { animation: none !important; } }
+
+/* everything inside panels and system cards is square, like the panels themselves */
+body[data-theme="nightcity"] :is(.w, #approval, #overview, .p-sheet, #toast) :not(svg, svg *, canvas, input[type=range]) { border-radius: 0 !important; }
+/* Claude permission prompt */
+body[data-theme="nightcity"] .ap-card { border-radius: 0; background: rgba(13, 17, 23, .97); border: 1px solid var(--nc-r); box-shadow: 0 0 40px rgba(255, 42, 77, .2);
+  clip-path: polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100% 100%, 22px 100%, 0 calc(100% - 22px)); }
+body[data-theme="nightcity"] .ap-tool { font-family: "Rajdhani", sans-serif; font-weight: 700; font-size: 32px; text-transform: uppercase; color: var(--nc-y);
+  text-shadow: 2px 0 rgba(255, 42, 77, .5), -2px 0 rgba(0, 240, 255, .45); }
+body[data-theme="nightcity"] .ap-detail { border: 1px solid rgba(0, 240, 255, .4); color: var(--nc-c); }
+body[data-theme="nightcity"] .ap-btn { font-family: "Rajdhani", sans-serif; letter-spacing: .12em; text-transform: uppercase;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); }
+body[data-theme="nightcity"] .ap-btn.allow { background: var(--nc-y); color: #0a0a05; }
+body[data-theme="nightcity"] .ap-btn.deny { background: rgba(255, 42, 77, .12); color: var(--nc-r); border-color: var(--nc-r); }
+/* overview of all pages */
+body[data-theme="nightcity"] #overview { background: rgba(7, 8, 12, .96); }
+body[data-theme="nightcity"] .ov-head { font-family: "Rajdhani", sans-serif; color: var(--nc-y); letter-spacing: .1em; }
+body[data-theme="nightcity"] .ic.play { background: var(--nc-y); color: #0a0a05; box-shadow: 0 0 14px rgba(252, 238, 10, .35);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
