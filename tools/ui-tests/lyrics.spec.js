@@ -40,6 +40,7 @@ test('lights up the line being sung and shows the song', async ({ page }) => {
   await expect(page.locator('.ly-line')).toHaveCount(4);
   await expect(page.locator('.ly-line.on')).toHaveText('Babe, you best believe it');
   await expect(page.locator('.ly-line.past')).toHaveCount(2);
+  await expect(page.locator('.ly-vig')).toHaveCount(1);
   await page.screenshot({ path: test.info().outputPath('lyrics.png') });
 });
 

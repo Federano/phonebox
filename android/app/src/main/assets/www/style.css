@@ -1505,3 +1505,6 @@ body.controls-top .ap-foot { order: -1; margin-bottom: 4px; }
   -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
 .w.ly.ly-podcast .ly-lines, .w.ly.ly-podcast .ly-note, .w.ly.ly-podcast .ly-qh, .w.ly.ly-podcast .ly-queue, .w.ly.ly-podcast .ly-tr { display: none; }
 .w.ly.ly-podcast .ly-words { display: flex; align-items: center; }
+/* lyrics page: breathing vignette (dark edges, cover-tinted) */
+.ly-vig { position: absolute; inset: 0; pointer-events: none; opacity: .6;
+  background: radial-gradient(75% 70% at 50% 48%, transparent 45%, color-mix(in srgb, var(--ly-bg, #000) 55%, #000) 100%); }

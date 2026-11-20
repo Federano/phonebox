@@ -162,6 +162,8 @@ W.lyrics = {
     const qHead = h('div', 'ly-qh', 'A seguir'), queue = h('div', 'ly-queue');
     const bgPhoto = h('img', 'ly-bgphoto'); bgPhoto.alt = '';
     const fx = h('canvas', 'ly-fx');
+    // breathing vignette: the dark edges slowly close in and open up, a little more on the beat
+    const vig = h('div', 'ly-vig');
     const fxs = { bass: .3, mid: .3, high: .3, avgBass: .3, pulse: 0, lastBeat: 0, act: 1, ph: 0, lastMs: 0, now: 0, waveAt: -1e9, short: .3, long: .3, energy: 1, prevCols: null, colsAt: 0, voice: 0 };
     let cols = ['150,120,220', '120,90,200', '200,120,180', '90,140,220'], lastWant = 0, raf = 0, lastFrame = 0;
     function animate(ms) {
@@ -201,6 +203,7 @@ W.lyrics = {
       if (podMode) { fxs.voice += (nm * 1.4 - fxs.voice) * .15; voiceWave(fx.getContext('2d'), w, hgt, fxs, cols); }
       else weave(fx.getContext('2d'), w, hgt, fxs, cols);
       // the blurred photo breathes (slow zoom) and lights up a little on the beat; dimmer when paused
+      vig.style.opacity = ((.55 + .3 * Math.sin(ms / 2600)) * (playing ? 1 : .7) + .15 * fxs.pulse).toFixed(3);
       bgPhoto.style.transform = `scale(${(1 + .04 * Math.sin(ms / 4000)).toFixed(4)})`;
       bgPhoto.style.filter = `blur(24px) brightness(${((.44 + .06 * fxs.energy + .12 * fxs.pulse) * (playing ? 1 : .8)).toFixed(3)}) saturate(1.2)`;
       // keep the agent's analyser running while this page shows (it stops a few seconds after the last ask)
@@ -211,7 +214,7 @@ W.lyrics = {
     }
     if (!matchMedia('(prefers-reduced-motion: reduce)').matches) raf = requestAnimationFrame(animate);
     box.append(
-      h('div', 'ly-main', bgPhoto, h('div', 'ly-bgveil'), fx, h('div', 'ly-top', chip, h('div', 'ly-topr', trBtn, fsBtn)), h('div', 'ly-words', list, note, pod)),
+      h('div', 'ly-main', bgPhoto, h('div', 'ly-bgveil'), fx, vig, h('div', 'ly-top', chip, h('div', 'ly-topr', trBtn, fsBtn)), h('div', 'ly-words', list, note, pod)),
       h('div', 'ly-card', h('div', 'ly-pic', img), h('div', 'ly-meta', title, artist), h('div', 'ly-prog', bar, times), ctl, qHead, queue));
     // the next songs; tapping one plays it (Spotify connected in the settings)
     let qKey = '', lastQueue = [];
