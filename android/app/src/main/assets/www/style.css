@@ -1488,13 +1488,6 @@ body.controls-top .ap-foot { order: -1; margin-bottom: 4px; }
 .w.ly.ly-fs .ly-card { display: none; }
 .w.ly.ly-fs .ly-lines { padding: 0 clamp(24px, 8cqw, 120px); }
 .w.ly.ly-fs .ly-line { font-size: clamp(24px, 9cqmin, 64px); max-width: 28ch; }
-/* lyrics page: the line being sung breathes with the beat and fills with colour as it is sung (karaoke);
-   photos fade between songs */
-.ly-photo, .ly-bgphoto { transition: opacity .35s ease; }
-.ly-line.on { transform: scale(calc(1.04 + .035 * var(--ly-beat, 0))); transition: color .35s, transform .12s; }
-.ly-line.on .ly-txt { background: linear-gradient(90deg, #fff var(--ly-fill, 0%), rgba(255, 255, 255, .5) var(--ly-fill, 0%));
-  -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none; }
-.w.ly.ly-paused .ly-line.on .ly-txt { background: none; color: rgba(255, 255, 255, .7); -webkit-background-clip: border-box; }
 /* lyrics page, podcast episode: the episode takes the place of the lyrics (voice wave behind it); no queue */
 .ly-pod { position: relative; z-index: 1; max-width: 720px; margin: auto; padding: 0 28px; text-align: left; }
 .ly-pod[hidden] { display: none; }
@@ -1510,6 +1503,5 @@ body.controls-top .ap-foot { order: -1; margin-bottom: 4px; }
   background: radial-gradient(75% 70% at 50% 48%, transparent 45%, color-mix(in srgb, var(--ly-bg, #000) 55%, #000) 100%); }
 /* lyrics page, lighter and quicker: the lines change colour and size faster; the photo layer is drawn once and only moved */
 .ly-line { transition: color .18s ease-out, transform .18s ease-out; }
-.ly-line.on { transition: color .18s ease-out, transform .1s ease-out; will-change: transform; }
 .ly-bgphoto { will-change: transform; }
 .ly-vig { will-change: opacity; }
