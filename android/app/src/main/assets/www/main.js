@@ -17,7 +17,6 @@ import './widgets/dictate.js';
 import './widgets/federano.js';
 import './widgets/lyrics.js';
 import './mirror.js';
-import { nightCity, ncPage } from './nightcity.js';
 import './widgets/camera.js';
 import './widgets/spectrum.js';
 
@@ -1705,7 +1704,6 @@ export function onScroll() {
   updateDots();
   flashTitle();
   setActive();
-  ncPage(curPage);
   if (sheet) closeSheet();
   if (pageOf('procs')) loadProcs();
 }
@@ -2025,8 +2023,7 @@ export function applyDisplay() {
   LOCALE = I18n ? I18n.getLocale() : 'en-GB';
   I18n?.applyDom();
   // theme and accent apply in the preview and the browser too
-  document.body.dataset.theme = ['amoled', 'midnight', 'warm', 'graphite', 'nightcity'].includes(d.theme) ? d.theme : 'default';
-  nightCity(d.theme === 'nightcity');
+  document.body.dataset.theme = ['amoled', 'midnight', 'warm', 'graphite'].includes(d.theme) ? d.theme : 'default';
   const accent = hexToRgb(d.accent);
   const before = DEFAULT_AMBIENT;
   DEFAULT_AMBIENT = accent || '45, 212, 191';
