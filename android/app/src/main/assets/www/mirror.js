@@ -4,6 +4,39 @@ import { API, PANEL_HEADERS, bridge, haptic, toast } from './main.js';
 // Full-screen view of the PC's video, live. The agent captures the player's window (cropped to the video in a browser)
 // and the panel pulls JPEG frames: two requests in flight keep the link busy, each waiting for a frame newer than the
 // last one shown. Sound stays on the PC. Tap ✕ (or the back gesture) to close.
+// Tap the picture to show the controls: play/pause, back/forward 10 s, next, a progress bar to jump, the PC's volume
+// and a microphone for short voice commands. They drive the PC's player through the agent's media API
+// (/api/media/*, /api/volume, /api/skills/run) — the same one the media widget uses.
+
+const SVG = {
+  play: '<svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></svg>',
+  pause: '<svg viewBox="0 0 24 24"><rect x="6.5" y="5" width="4" height="14" rx="1.2" fill="currentColor"/><rect x="13.5" y="5" width="4" height="14" rx="1.2" fill="currentColor"/></svg>',
+  back: '<svg viewBox="0 0 24 24"><path d="M12 5a7 7 0 1 1-6.6 9.3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 2.2v5.6L8.2 5z" fill="currentColor"/><text x="12" y="15.6" text-anchor="middle" font-size="6.6" font-weight="700" fill="currentColor" font-family="system-ui,sans-serif">10</text></svg>',
+  fwd: '<svg viewBox="0 0 24 24"><path d="M12 5a7 7 0 1 0 6.6 9.3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 2.2v5.6L15.8 5z" fill="currentColor"/><text x="12" y="15.6" text-anchor="middle" font-size="6.6" font-weight="700" fill="currentColor" font-family="system-ui,sans-serif">10</text></svg>',
+  next: '<svg viewBox="0 0 24 24"><path d="M6 5.5v13l9-6.5z" fill="currentColor"/><rect x="16" y="5.5" width="2.6" height="13" rx="1" fill="currentColor"/></svg>',
+  vol: '<svg viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+  muted: '<svg viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor"/><path d="M16 9.5l5 5M21 9.5l-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+  mic: '<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+};
+
+const clock = (ms) => {
+  const s = Math.max(0, Math.floor((ms || 0) / 1000));
+  const mm = Math.floor(s / 60) % 60, ss = String(s % 60).padStart(2, '0');
+  return s >= 3600 ? `${Math.floor(s / 3600)}:${String(mm).padStart(2, '0')}:${ss}` : `${Math.floor(s / 60)}:${ss}`;
+};
+const post = (path) => fetch(`${API}${path}`, { method: 'POST', cache: 'no-store', headers: PANEL_HEADERS });
+
+// voice: the app's speech recognizer reports to window.onAndroidSpeech; ours is chained in front of the widgets' ones
+let micSession = 0, micHandler = null, speechHooked = false;
+function hookSpeech() {
+  if (speechHooked) return;
+  speechHooked = true;
+  const prev = window.onAndroidSpeech;
+  window.onAndroidSpeech = (kind, text, id) => {
+    if (micSession && id === micSession && micHandler) micHandler(kind, text);
+    else if (prev) prev(kind, text, id);
+  };
+}
 
 let overlay = null;
 
@@ -26,7 +59,8 @@ export function openMirror(title) {
   fps.className = 'mirror-fps';
   const el = document.createElement('div');
   el.className = 'mirror';
-  el.append(img, label, fps, mini, close);
+  const ctl = controls();
+  el.append(img, label, fps, ctl.el, mini, close);
   document.body.append(el);
 
   // ---- floating bubble while minimized: live thumbnail, drag it anywhere, tap to come back
@@ -91,6 +125,7 @@ export function openMirror(title) {
     bubble.classList.remove('in');
     setTimeout(() => bubble.remove(), 250);
     el.classList.remove('hidden');
+    el.classList.remove('chrome');
     showChrome();
     // the PC may have paused the mirror while the tablet was elsewhere: start it again (same tab, nothing asked)
     fetch(`${API}/mirror/start`, { method: 'POST', cache: 'no-store', headers: PANEL_HEADERS }).catch(() => {});
@@ -110,13 +145,206 @@ export function openMirror(title) {
     }
   }, 1000);
   let hideTimer = 0;
+  const hideChrome = () => { clearTimeout(hideTimer); el.classList.remove('chrome'); };
   const showChrome = () => {
+    const was = el.classList.contains('chrome');
     el.classList.add('chrome');
     clearTimeout(hideTimer);
-    hideTimer = setTimeout(() => el.classList.remove('chrome'), 3000);
+    // the controls stay while a slider is held or the microphone listens
+    const later = () => { hideTimer = setTimeout(() => (ctl.busy() ? later() : el.classList.remove('chrome')), 4000); };
+    later();
+    if (!was) ctl.refresh();
   };
   showChrome();
-  el.addEventListener('pointerdown', (e) => { if (e.target !== close && e.target !== mini) showChrome(); });
+  // a tap on the picture shows the controls, another one hides them; touching a control keeps them up
+  el.addEventListener('click', (e) => {
+    if (e.target !== img && e.target !== el && e.target !== label && e.target !== ctl.el) return;
+    if (el.classList.contains('chrome')) hideChrome(); else showChrome();
+  });
+  ctl.el.addEventListener('pointerdown', () => showChrome());
+
+  // ---- the controls: state from GET /api/mirror/controls while they are on screen; the position runs on locally
+  function controls() {
+    const box = document.createElement('div');
+    box.className = 'mirror-ctl';
+    // the panel must not take a slider drag as a page swipe
+    for (const t of ['pointerdown', 'pointermove', 'pointerup', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'mouseup'])
+      box.addEventListener(t, (e) => e.stopPropagation());
+    const btn = (cls, svg, title) => {
+      const b = document.createElement('button');
+      b.className = 'mc-btn ' + cls; b.innerHTML = svg; b.title = title; b.setAttribute('aria-label', title);
+      return b;
+    };
+    const back = btn('mc-back', SVG.back, 'Voltar 10 segundos');
+    const play = btn('mc-play', SVG.pause, 'Play / pausa');
+    const fwd = btn('mc-fwd', SVG.fwd, 'Avançar 10 segundos');
+    const next = btn('mc-next', SVG.next, 'Próximo vídeo');
+    const center = document.createElement('div');
+    center.className = 'mc-center';
+    center.append(back, play, fwd, next);
+
+    const cur = document.createElement('span'); cur.className = 'mc-time'; cur.textContent = '0:00';
+    const dur = document.createElement('span'); dur.className = 'mc-time'; dur.textContent = '--:--';
+    const seek = document.createElement('input');
+    seek.type = 'range'; seek.min = '0'; seek.max = '1000'; seek.value = '0'; seek.className = 'mc-seek'; seek.setAttribute('aria-label', 'Posição do vídeo');
+    const mute = btn('mc-mute', SVG.vol, 'Mudo');
+    const vol = document.createElement('input');
+    vol.type = 'range'; vol.min = '0'; vol.max = '100'; vol.value = '50'; vol.className = 'mc-vol'; vol.setAttribute('aria-label', 'Volume do PC');
+    const volN = document.createElement('span'); volN.className = 'mc-voln';
+    const canMic = !!(bridge && bridge.listen && bridge.canListen);
+    const mic = btn('mc-mic', SVG.mic, 'Falar um comando');
+    const volBox = document.createElement('div');
+    volBox.className = 'mc-volbox';
+    volBox.append(mute, vol, volN);
+    const bar = document.createElement('div');
+    bar.className = 'mc-bar';
+    bar.append(cur, seek, dur, volBox);
+    if (canMic) bar.append(mic);
+    const said = document.createElement('div');
+    said.className = 'mc-said';
+    box.append(center, bar, said);
+
+    // media state: the position is counted on from when it was read
+    let m = null, at = 0, seeking = false, volHeld = false, listening = false, pollTimer = 0, gen = 0;
+    const posNow = () => !m ? 0 : Math.min(m.durMs > 0 ? m.durMs : Infinity, (m.posMs || 0) + (m.ageMs || 0) + (m.playing ? performance.now() - at : 0));
+    function draw() {
+      if (seeking || !m) return;
+      const p = posNow();
+      cur.textContent = clock(p);
+      seek.value = m.durMs > 0 ? String(Math.round((p / m.durMs) * 1000)) : '0';
+      seek.style.setProperty('--p', (Number(seek.value) / 10) + '%');
+    }
+    const apply = (media) => {
+      if (!media) return;
+      m = media; at = performance.now();
+      play.innerHTML = m.playing ? SVG.pause : SVG.play;
+      seek.disabled = !(m.canSeek && m.durMs > 0); back.disabled = !m.canSeek; fwd.disabled = !m.canSeek;
+      dur.textContent = m.durMs > 0 ? clock(m.durMs) : '--:--';
+      if (m.title) label.textContent = m.title;
+      draw();
+    };
+    const applyAudio = (a) => {
+      if (!a || volHeld) return;
+      vol.value = String(a.volume);
+      vol.style.setProperty('--p', a.volume + '%');
+      volN.textContent = a.muted ? 'mudo' : a.volume + '%';
+      mute.innerHTML = a.muted ? SVG.muted : SVG.vol;
+      volBox.classList.toggle('muted', !!a.muted);
+    };
+    const ticker = setInterval(() => { if (el.classList.contains('chrome')) draw(); }, 250);
+
+    async function refresh() {
+      const my = ++gen;
+      clearTimeout(pollTimer);
+      if (!alive || minimized || !el.classList.contains('chrome')) return;
+      try {
+        const r = await fetch(`${API}/mirror/controls`, { cache: 'no-store', headers: PANEL_HEADERS });
+        if (r.ok && my === gen) { const j = await r.json(); if (!seeking) apply(j.media); applyAudio(j.audio); }
+      } catch (_) {}
+      if (my === gen && alive) pollTimer = setTimeout(refresh, 1000);
+    }
+
+    async function media(action, q = '', optimistic) {
+      haptic();
+      if (optimistic) optimistic();
+      try {
+        const r = await post(`/media/${action}${q}`);
+        if (!r.ok) { toast(action.startsWith('seek') ? 'Esse player não deixa pular pelo Windows.' : 'O player do PC não respondeu.', 'err'); refresh(); return; }
+        apply((await r.json()).media);
+      } catch (_) { toast('Sem conexão com o PC.', 'err'); }
+    }
+    play.onclick = () => media('playpause', '', () => {
+      if (!m) return;
+      m = { ...m, posMs: posNow(), ageMs: 0, playing: !m.playing }; at = performance.now();
+      play.innerHTML = m.playing ? SVG.pause : SVG.play;
+    });
+    const jump = (d) => () => media('seekby', `?ms=${d}`, () => {
+      if (!m || !m.canSeek) return;
+      m = { ...m, posMs: Math.max(0, Math.min(m.durMs > 0 ? m.durMs : Infinity, posNow() + d)), ageMs: 0 }; at = performance.now(); draw();
+    });
+    back.onclick = jump(-10000);
+    fwd.onclick = jump(10000);
+    next.onclick = () => { media('next'); setTimeout(refresh, 900); };
+
+    seek.addEventListener('input', () => {
+      seeking = true;
+      seek.style.setProperty('--p', (Number(seek.value) / 10) + '%');
+      if (m && m.durMs > 0) cur.textContent = clock((Number(seek.value) / 1000) * m.durMs);
+    });
+    seek.addEventListener('change', () => {
+      seeking = false;
+      if (!m || !(m.durMs > 0)) return;
+      const to = Math.round((Number(seek.value) / 1000) * m.durMs);
+      media('seek', `?ms=${to}`, () => { m = { ...m, posMs: to, ageMs: 0 }; at = performance.now(); draw(); });
+    });
+
+    // volume: sent while the finger moves (at most every 120 ms) and once more where it stops
+    let volSent = 0, volLast = -1, volTimer = 0;
+    const sendVol = () => {
+      const v = Number(vol.value);
+      if (v === volLast) return;
+      volLast = v; volSent = performance.now();
+      post(`/volume?level=${v}`).catch(() => {});
+    };
+    vol.addEventListener('input', () => {
+      volHeld = true;
+      vol.style.setProperty('--p', vol.value + '%');
+      volN.textContent = vol.value + '%';
+      volBox.classList.remove('muted'); mute.innerHTML = SVG.vol;
+      clearTimeout(volTimer);
+      if (performance.now() - volSent > 120) sendVol(); else volTimer = setTimeout(sendVol, 120);
+    });
+    vol.addEventListener('change', () => { clearTimeout(volTimer); sendVol(); setTimeout(() => { volHeld = false; volLast = -1; }, 600); });
+    mute.onclick = async () => {
+      haptic();
+      try { const r = await post('/volume?op=mute'); if (r.ok) applyAudio(await r.json()); } catch (_) {}
+    };
+
+    // voice: one short command ("pausa", "próximo", "volta 10 segundos", "aumenta o volume") goes to the skills
+    let saidTimer = 0;
+    const say = (text, keep) => {
+      said.textContent = text; said.classList.toggle('in', !!text);
+      clearTimeout(saidTimer);
+      if (text && !keep) saidTimer = setTimeout(() => said.classList.remove('in'), 3500);
+    };
+    const micDone = () => { micSession = 0; micHandler = null; listening = false; mic.classList.remove('on'); };
+    async function ask(text) {
+      say('“' + text + '” …', true);
+      try {
+        const r = await post(`/skills/run?text=${encodeURIComponent(text)}`);
+        const j = await r.json();
+        say(j.reply || '—');
+        if (j.open && bridge && bridge.openVideo) bridge.openVideo(j.open);
+        refresh();
+      } catch (_) { say('Não consegui falar com o PC.'); }
+    }
+    mic.onclick = () => {
+      haptic();
+      if (!bridge.canListen()) { say('Este aparelho não tem reconhecimento de voz.'); return; }
+      if (micSession) { bridge.stopListening(micSession); return; }
+      hookSpeech();
+      const id = bridge.listen('pt-BR', false) || 0;
+      if (!id) return;
+      micSession = id; listening = true;
+      mic.classList.add('on');
+      say('Ouvindo…', true);
+      micHandler = (kind, text) => {
+        if (kind === 'partial') say(text || 'Ouvindo…', true);
+        else if (kind === 'final') { micDone(); if (String(text || '').trim()) ask(String(text).trim()); else say('Não ouvi nada.'); showChrome(); }
+        else if (kind === 'error') { micDone(); say(text === 'cancelled' ? '' : 'Não entendi. Toque no microfone de novo.'); showChrome(); }
+      };
+    };
+
+    return {
+      el: box, refresh,
+      busy: () => seeking || volHeld || listening,
+      stop() {
+        clearInterval(ticker); clearTimeout(pollTimer); clearTimeout(volTimer); gen++;
+        if (micSession && bridge && bridge.cancelListening) bridge.cancelListening(micSession);
+        micDone();
+      },
+    };
+  }
 
   async function pull(slowLane) {
     while (alive) {
@@ -165,6 +393,7 @@ export function openMirror(title) {
     alive = false;
     clearInterval(fpsTimer);
     clearTimeout(hideTimer);
+    ctl.stop();
     el.remove();
     bubble.remove();
     overlay = null;

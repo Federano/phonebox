@@ -13,9 +13,16 @@ public sealed record SkillDef
     public string Id { get; init; } = "";
     public string Name { get; init; } = "";
     public string[] Triggers { get; init; } = [];
-    /// <summary>Built-in action: media.now, media.playpause, media.next, media.prev, video.mirror, video.toTablet, reply.</summary>
+    /// <summary>Built-in action: media.now, media.playpause, media.play, media.pause, media.next, media.prev,
+    /// media.seek (by <see cref="Seconds"/>), volume.up, volume.down (by <see cref="Step"/>), volume.mute,
+    /// video.mirror, video.toTablet, reply.</summary>
     public string Action { get; init; } = "reply";
-    /// <summary>Answer; {title}, {artist}, {album}, {app}, {state} are filled from the media playing on the PC.</summary>
+    /// <summary>media.seek: how far to jump; negative goes back (e.g. -10).</summary>
+    public int Seconds { get; init; }
+    /// <summary>volume.up / volume.down: how many points of the PC's volume (0-100); default 10.</summary>
+    public int Step { get; init; }
+    /// <summary>Answer; {title}, {artist}, {album}, {app}, {state} are filled from the media playing on the PC
+    /// ({volume} after a volume action).</summary>
     public string Reply { get; init; } = "";
     /// <summary>Answer when nothing is playing (media actions only).</summary>
     public string ReplyEmpty { get; init; } = "";
@@ -26,7 +33,7 @@ public sealed record SkillDef
 /// <param name="Mirror">True: the tablet shows the PC's video live (GET /api/mirror/frame).</param>
 public sealed record SkillResult(bool Ok, string? Skill, string Reply, string? Open = null, bool Mirror = false);
 
-public sealed class SkillEngine(ILogger<SkillEngine> log, MediaMonitor media, YouTubeTracker youtube, MirrorCapture mirror)
+public sealed class SkillEngine(ILogger<SkillEngine> log, MediaMonitor media, YouTubeTracker youtube, MirrorCapture mirror, AudioControl audio)
 {
     public static readonly string[] WakeWords = ["federano"];
     static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true, ReadCommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
@@ -62,9 +69,36 @@ public sealed class SkillEngine(ILogger<SkillEngine> log, MediaMonitor media, Yo
         {
             case "media.now":
                 return Answer(skill, media.Snapshot());
-            case "media.playpause" or "media.next" or "media.prev":
+            case "media.playpause" or "media.next" or "media.prev" or "media.play" or "media.pause":
+            {
                 var ok = await media.Control(skill.Action["media.".Length..], null);
+                if (!ok) return new(false, skill.Id, "Não consegui controlar o player do PC.");
+                if (skill.Action is "media.next") await Task.Delay(800);   // the next track's title, not the old one
                 return Answer(skill, media.Snapshot()) with { Ok = ok };
+            }
+            case "media.seek":
+            {
+                var seconds = skill.Seconds != 0 ? skill.Seconds : 10;
+                var ok = await media.Control("seekby", seconds * 1000L);
+                if (!ok) return new(false, skill.Id, "Esse player não deixa pular pelo Windows.");
+                return Answer(skill, media.Snapshot()) with { Ok = true };
+            }
+            case "volume.up" or "volume.down" or "volume.mute":
+            {
+                var step = skill.Step > 0 ? skill.Step : 10;
+                var ok = skill.Action switch
+                {
+                    "volume.up" => audio.Step(+step),
+                    "volume.down" => audio.Step(-step),
+                    _ => audio.ToggleMute(),
+                };
+                if (ok) StateSignal.Poke();
+                var a = audio.Current();
+                if (!ok || a is null) return new(false, skill.Id, "Não consegui mudar o volume do PC.");
+                var vals = new Dictionary<string, string> { ["volume"] = a.Volume.ToString(CultureInfo.InvariantCulture), ["state"] = a.Muted ? "mudo" : "com som" };
+                var answer = skill.Reply.Length > 0 ? Fill(skill.Reply, vals) : a.Muted ? "PC no mudo." : $"Volume do PC em {a.Volume}%.";
+                return new(true, skill.Id, answer);
+            }
             case "video.toTablet":
                 return ToTablet(skill, youtube);
             case "video.mirror":

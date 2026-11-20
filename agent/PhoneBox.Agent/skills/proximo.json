@@ -1,0 +1,8 @@
+{
+  // Federano: "proximo" (voz, texto ou os controles do espelhamento)
+  "name": "Próximo",
+  "triggers": ["proximo", "proxima", "proximo video", "proxima musica", "pula", "pula esse", "passa", "passa esse"],
+  "action": "media.next",
+  "reply": "Próximo: \"{title}\".",
+  "replyEmpty": "Nada tocando no PC agora."
+}

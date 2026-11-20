@@ -135,10 +135,25 @@ public sealed class MediaMonitor(ILogger<MediaMonitor> log) : BackgroundService
             "next" => await s.TrySkipNextAsync(),
             "prev" => await s.TrySkipPreviousAsync(),
             "seek" when ms is { } m => await s.TryChangePlaybackPositionAsync(TimeSpan.FromMilliseconds(m).Ticks),
+            // Federano: relative seek (e.g. -10000 / +10000) from where the player is now
+            "seekby" when ms is { } d && SeekTarget(_snap, d) is { } to => await s.TryChangePlaybackPositionAsync(TimeSpan.FromMilliseconds(to).Ticks),
+            "pause" => s.GetPlaybackInfo().PlaybackStatus != GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing || await s.TryPauseAsync(),
+            "play" => s.GetPlaybackInfo().PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing || await s.TryPlayAsync(),
             _ => false,
         };
         try { await Poll(); } catch { }
         return ok;
+    }
+
+    /// <summary>Where a relative seek lands: the position now (a playing track moved on since it was read) plus
+    /// <paramref name="deltaMs"/>, kept inside the track. Null when the player cannot seek.</summary>
+    internal static long? SeekTarget(MediaSnapshot? m, long deltaMs)
+    {
+        if (m is null || !m.CanSeek) return null;
+        var now = m.PosMs + (m.Playing ? m.AgeMs : 0);
+        var to = Math.Max(0, now + deltaMs);
+        if (m.DurMs > 0) to = Math.Min(to, Math.Max(0, m.DurMs - 1000));
+        return to;
     }
 
     public async Task<bool> PauseAsync()

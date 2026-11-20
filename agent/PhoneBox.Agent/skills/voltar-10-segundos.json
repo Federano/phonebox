@@ -1,0 +1,9 @@
+{
+  // Federano: "volta 10 segundos" (voz, texto ou os controles do espelhamento)
+  "name": "Voltar 10 segundos",
+  "triggers": ["volta 10 segundos", "volta dez segundos", "voltar 10 segundos", "voltar dez segundos", "volta 10", "volta dez", "volta um pouco", "retrocede"],
+  "action": "media.seek",
+  "seconds": -10,
+  "reply": "Voltei 10 segundos.",
+  "replyEmpty": "Nada tocando no PC agora."
+}

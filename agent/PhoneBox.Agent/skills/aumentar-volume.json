@@ -1,0 +1,8 @@
+{
+  // Federano: "aumenta o volume" (voz, texto ou os controles do espelhamento)
+  "name": "Aumentar o volume",
+  "triggers": ["aumenta o volume", "aumentar o volume", "aumenta volume", "sobe o volume", "mais volume", "mais alto", "aumenta o som"],
+  "action": "volume.up",
+  "step": 10,
+  "reply": "Volume do PC em {volume}%."
+}

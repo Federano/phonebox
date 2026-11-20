@@ -1,0 +1,8 @@
+{
+  // Federano: "diminui o volume" (voz, texto ou os controles do espelhamento)
+  "name": "Diminuir o volume",
+  "triggers": ["diminui o volume", "diminuir o volume", "abaixa o volume", "abaixar o volume", "baixa o volume", "menos volume", "mais baixo", "abaixa o som"],
+  "action": "volume.down",
+  "step": 10,
+  "reply": "Volume do PC em {volume}%."
+}

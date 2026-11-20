@@ -1,0 +1,8 @@
+{
+  // Federano: "pausa" (voz, texto ou os controles do espelhamento)
+  "name": "Pausar",
+  "triggers": ["pausa", "pausar", "pause", "pausa o video", "pausa a musica", "pausa ai", "para o video", "para a musica"],
+  "action": "media.pause",
+  "reply": "Pausado.",
+  "replyEmpty": "Nada tocando no PC agora."
+}

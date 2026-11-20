@@ -1,0 +1,7 @@
+{
+  // Federano: "mudo" (voz, texto ou os controles do espelhamento)
+  "name": "Mudo",
+  "triggers": ["mudo", "muta", "mutar", "tira o som", "silencio", "volta o som", "desmuta"],
+  "action": "volume.mute",
+  "reply": "PC {state}."
+}

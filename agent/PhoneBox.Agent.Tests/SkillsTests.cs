@@ -76,3 +76,38 @@ public class YouTubeToTabletTests
     public void MatchesTriggers() =>
         Assert.NotNull(SkillEngine.Match([Skill with { Triggers = ["joga pro tablet"] }], "Federano, joga pro tablet!"));
 }
+
+/// <summary>The skills that ship with the agent: what a short voice command runs.</summary>
+public class ShippedSkillsTests
+{
+    static readonly IReadOnlyList<SkillDef> Shipped = Directory
+        .EnumerateFiles(Path.Combine(AppContext.BaseDirectory, "skills"), "*.json")
+        .Select(f => System.Text.Json.JsonSerializer.Deserialize<SkillDef>(File.ReadAllText(f), new System.Text.Json.JsonSerializerOptions
+            { PropertyNameCaseInsensitive = true, ReadCommentHandling = System.Text.Json.JsonCommentHandling.Skip, AllowTrailingCommas = true })!
+            with { Id = Path.GetFileNameWithoutExtension(f) })
+        .ToList();
+
+    [Theory]
+    [InlineData("pausa", "pausar")]
+    [InlineData("Federano, pausa o vídeo", "pausar")]
+    [InlineData("continua", "continuar")]
+    [InlineData("próximo", "proximo")]
+    [InlineData("próximo vídeo", "proximo")]
+    [InlineData("volta 10 segundos", "voltar-10-segundos")]
+    [InlineData("volta dez segundos", "voltar-10-segundos")]
+    [InlineData("avança 10 segundos", "avancar-10-segundos")]
+    [InlineData("pula 10 segundos", "avancar-10-segundos")]
+    [InlineData("aumenta o volume", "aumentar-volume")]
+    [InlineData("abaixa o volume", "diminuir-volume")]
+    [InlineData("o que está tocando?", "o-que-esta-tocando")]
+    [InlineData("continua no tablet", "abrir-no-youtube-do-tablet")]
+    public void VoiceCommands(string said, string skill) => Assert.Equal(skill, SkillEngine.Match(Shipped, said)?.Id);
+
+    [Fact]
+    public void SeekSkillsCarryTheirSeconds()
+    {
+        Assert.Equal(-10, Shipped.Single(s => s.Id == "voltar-10-segundos").Seconds);
+        Assert.Equal(10, Shipped.Single(s => s.Id == "avancar-10-segundos").Seconds);
+        Assert.Equal(10, Shipped.Single(s => s.Id == "aumentar-volume").Step);
+    }
+}

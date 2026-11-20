@@ -1,0 +1,8 @@
+{
+  // Federano: "continua" (voz, texto ou os controles do espelhamento)
+  "name": "Continuar",
+  "triggers": ["continua", "continuar", "despausa", "play", "da play", "toca", "volta a tocar", "solta o video"],
+  "action": "media.play",
+  "reply": "Tocando \"{title}\".",
+  "replyEmpty": "Nada tocando no PC agora."
+}

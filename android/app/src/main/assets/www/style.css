@@ -1355,3 +1355,48 @@ body.controls-top .ap-foot { order: -1; margin-bottom: 4px; }
 .mirror-bubble-icon svg { width: 72%; height: 72%; }
 @keyframes bubble-breathe { 50% { box-shadow: 0 10px 30px rgba(0,0,0,.55), 0 0 0 8px rgba(230,33,23,.18); } }
 .mirror-bubble-x { position: absolute; right: -4px; top: -4px; width: 34px; height: 34px; border-radius: 50%; border: 0; background: rgba(20,20,24,.9); color: #fff; font-size: 15px; }
+
+/* Federano: controls over the mirrored video (tap the picture) */
+.mirror:not(.chrome) .mirror-close, .mirror:not(.chrome) .mirror-mini { pointer-events: none; }
+.mirror-ctl { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .25s; color: #fff; }
+.mirror.chrome .mirror-ctl { opacity: 1; }
+.mirror.chrome .mirror-ctl > * { pointer-events: auto; }
+.mirror-ctl::before { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 190px; pointer-events: none;
+  background: linear-gradient(to top, rgba(0,0,0,.75), rgba(0,0,0,0)); }
+.mc-center { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 34px; }
+.mc-btn { border: 0; border-radius: 50%; background: rgba(0,0,0,.5); color: #fff; display: flex; align-items: center; justify-content: center;
+  width: 76px; height: 76px; padding: 0; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); transition: transform .12s, background .2s; }
+.mc-btn svg { width: 46%; height: 46%; }
+.mc-btn:active { transform: scale(.9); background: rgba(255,255,255,.22); }
+.mc-btn:disabled { opacity: .35; }
+.mc-play { width: 104px; height: 104px; background: rgba(0,0,0,.6); }
+.mc-play svg { width: 50%; height: 50%; }
+.mc-bar { position: absolute; left: 24px; right: 24px; bottom: 22px; display: flex; align-items: center; gap: 14px; }
+.mc-time { font-size: 15px; font-variant-numeric: tabular-nums; min-width: 48px; text-align: center; text-shadow: 0 1px 3px #000; }
+.mirror .mc-seek, .mirror .mc-vol { -webkit-appearance: none; appearance: none; height: 34px; background: transparent; margin: 0; --p: 0%; }
+.mirror .mc-seek { flex: 1; min-width: 120px; }
+.mirror .mc-vol { width: 150px; flex: none; }
+.mirror .mc-seek::-webkit-slider-runnable-track, .mirror .mc-vol::-webkit-slider-runnable-track { height: 6px; border-radius: 3px;
+  background: linear-gradient(to right, #e62117 var(--p), rgba(255,255,255,.3) var(--p)); }
+.mirror .mc-vol::-webkit-slider-runnable-track { background: linear-gradient(to right, #fff var(--p), rgba(255,255,255,.3) var(--p)); }
+.mirror .mc-seek::-webkit-slider-thumb, .mirror .mc-vol::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; margin-top: -8px; border-radius: 50%;
+  background: #fff; border: 0; box-shadow: 0 1px 4px rgba(0,0,0,.6); }
+.mirror .mc-seek::-webkit-slider-thumb { background: #e62117; }
+.mirror .mc-seek:disabled { opacity: .4; }
+.mc-volbox { display: flex; align-items: center; gap: 8px; padding-left: 8px; border-left: 1px solid rgba(255,255,255,.2); }
+.mc-volbox.muted .mc-vol { opacity: .45; }
+.mc-voln { font-size: 13px; min-width: 40px; color: rgba(255,255,255,.8); font-variant-numeric: tabular-nums; }
+.mc-mute, .mc-mic { width: 52px; height: 52px; flex: none; }
+.mc-mic.on { background: #e62117; animation: mc-mic 1.2s ease-in-out infinite; }
+@keyframes mc-mic { 50% { box-shadow: 0 0 0 10px rgba(230,33,23,.25); } }
+.mc-said { position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%) translateY(10px); max-width: 80%; padding: 10px 18px; border-radius: 14px;
+  background: rgba(10,12,16,.85); font-size: 18px; text-align: center; opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none !important; }
+.mc-said.in { opacity: 1; transform: translateX(-50%); }
+.mirror.chrome .mirror-fps { bottom: 76px; }
+@media (max-width: 700px) {
+  .mc-center { gap: 18px; }
+  .mc-btn { width: 60px; height: 60px; }
+  .mc-play { width: 82px; height: 82px; }
+  .mirror .mc-vol { width: 90px; }
+  .mc-bar { left: 12px; right: 12px; gap: 8px; }
+}

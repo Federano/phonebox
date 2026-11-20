@@ -832,6 +832,9 @@ app.MapPost("/api/mirror/tabletstats", (double? fetch, double? fps, MirrorCaptur
     if (fps is { } p) app.Logger.LogInformation("mirror tablet: {Fps:0.0} fps", p);
     return Results.Json(new { ok = true });
 });
+// Federano: what the mirror's controls on the tablet show (play state, position, PC volume)
+app.MapGet("/api/mirror/controls", (MediaMonitor media, AudioControl audio) =>
+    Results.Json(new { media = media.Snapshot(), audio = audio.Current() }));
 app.MapPost("/api/mirror/stop", (MirrorCapture mirror) => { mirror.Stop(); return Results.Json(new { ok = true }); });
 app.MapGet("/api/mirror/frame", async (long? after, HttpResponse res, MirrorCapture mirror, CancellationToken ct) =>
 {

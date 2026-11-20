@@ -1,0 +1,8 @@
+{
+  // Federano: "anterior" (voz, texto ou os controles do espelhamento)
+  "name": "Anterior",
+  "triggers": ["anterior", "video anterior", "musica anterior", "volta o video anterior", "volta a musica"],
+  "action": "media.prev",
+  "reply": "Voltei: \"{title}\".",
+  "replyEmpty": "Nada tocando no PC agora."
+}

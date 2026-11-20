@@ -1,0 +1,9 @@
+{
+  // Federano: "avanca 10 segundos" (voz, texto ou os controles do espelhamento)
+  "name": "Avançar 10 segundos",
+  "triggers": ["avanca 10 segundos", "avanca dez segundos", "avancar 10 segundos", "avancar dez segundos", "pula 10 segundos", "pula dez segundos", "adianta 10 segundos", "adianta dez segundos", "avanca 10", "avanca dez", "adianta um pouco", "avanca um pouco"],
+  "action": "media.seek",
+  "seconds": 10,
+  "reply": "Avancei 10 segundos.",
+  "replyEmpty": "Nada tocando no PC agora."
+}
