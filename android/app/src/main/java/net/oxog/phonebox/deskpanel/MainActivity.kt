@@ -51,6 +51,9 @@ import org.json.JSONObject
 class MainActivity : Activity(), SensorEventListener {
 
     private lateinit var web: WebView
+    /** Federano: the floating bubble back to the mirrored video while this app is in the background. */
+    private val mirrorBubble by lazy { MirrorBubble(applicationContext) }
+    @Volatile private var mirrorOpen = false
     // Set first in onDestroy: dictation and stream callbacks already queued on the UI thread then skip the destroyed WebView.
     private var destroyed = false
     private val dictation by lazy { Dictation(this) { script -> if (!destroyed) web.evaluateJavascript(script, null) } }
@@ -130,6 +133,8 @@ class MainActivity : Activity(), SensorEventListener {
         super.onNewIntent(intent)
         setIntent(intent)
         handlePairingLink(intent)
+        if (intent.getBooleanExtra(MirrorBubble.EXTRA_RESTORE, false))
+            web.evaluateJavascript("window.federanoRestoreMirror && window.federanoRestoreMirror()", null)
     }
 
     /** A pairing link from the computer's QR code (Settings › Wi-Fi › Pair a phone over Wi-Fi): ask, then pair. */
@@ -232,6 +237,7 @@ class MainActivity : Activity(), SensorEventListener {
     override fun onResume() {
         super.onResume()
         resumed = true
+        mirrorBubble.hide()
         web.onResume()
         web.evaluateJavascript("window.onAppPause && window.onAppPause(false)", null) // the panel catches up at once
         stream.start()
@@ -254,10 +260,12 @@ class MainActivity : Activity(), SensorEventListener {
         // WebView.onPause() leaves JavaScript running: tell the panel to stop polling and refreshing while nobody sees it
         web.evaluateJavascript("window.onAppPause && window.onAppPause(true)", null)
         web.onPause()
+        if (mirrorOpen) mirrorBubble.show()
         super.onPause()
     }
 
     override fun onDestroy() {
+        mirrorBubble.hide()
         destroyed = true
         resumed = false
         dictation.cancel(0)
@@ -485,6 +493,34 @@ class MainActivity : Activity(), SensorEventListener {
 
         @JavascriptInterface
         fun cancelListening(key: String, id: Int) { if (ok(key) && id > 0) dictation.cancel(id) }
+
+        /**
+         * Federano: a mirror is open (or closed). While open, leaving the app shows a bubble over other apps; the first
+         * time, Android's "Display over other apps" permission is asked for.
+         */
+        @JavascriptInterface
+        fun setMirrorBubble(key: String, on: Boolean) {
+            if (!ok(key)) return
+            mirrorOpen = on
+            if (!on) { runOnUiThread { mirrorBubble.hide() }; return }
+            val prefs = getSharedPreferences("federano", MODE_PRIVATE)
+            if (mirrorBubble.allowed() || prefs.getBoolean("bubbleAsked", false)) return
+            prefs.edit().putBoolean("bubbleAsked", true).apply()
+            runOnUiThread {
+                if (destroyed) return@runOnUiThread
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Bolinha do vídeo")
+                    .setMessage("Para mostrar uma bolinha que volta ao vídeo quando você abrir outro app, o Android precisa da permissão \"Exibir sobre outros apps\" para o Federano.")
+                    .setPositiveButton("Permitir") { _, _ ->
+                        try {
+                            startActivity(Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                android.net.Uri.parse("package:$packageName")))
+                        } catch (_: Exception) {}
+                    }
+                    .setNegativeButton("Agora não", null)
+                    .show()
+            }
+        }
 
         /**
          * Federano: opens a YouTube video (the one taken from the PC) in the YouTube app, or the browser without it.

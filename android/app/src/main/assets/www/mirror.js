@@ -1,4 +1,4 @@
-import { API, PANEL_HEADERS, haptic, toast } from './main.js';
+import { API, PANEL_HEADERS, bridge, haptic, toast } from './main.js';
 
 // ---------------------------------------------------------------- Federano mirroring
 // Full-screen view of the PC's video, live. The agent captures the player's window (cropped to the video in a browser)
@@ -8,13 +8,17 @@ import { API, PANEL_HEADERS, haptic, toast } from './main.js';
 let overlay = null;
 
 export function openMirror(title) {
-  if (overlay) return;
+  if (overlay) { overlay.restore(); return; }
   const img = document.createElement('img');
   img.className = 'mirror-img';
   img.alt = '';
   const close = document.createElement('button');
   close.className = 'mirror-close';
   close.textContent = '✕';
+  const mini = document.createElement('button');
+  mini.className = 'mirror-mini';
+  mini.title = 'Minimizar (vira uma bolinha)';
+  mini.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19h14M8 9l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const label = document.createElement('div');
   label.className = 'mirror-label';
   label.textContent = title || 'Espelhando o PC';
@@ -22,8 +26,72 @@ export function openMirror(title) {
   fps.className = 'mirror-fps';
   const el = document.createElement('div');
   el.className = 'mirror';
-  el.append(img, label, fps, close);
+  el.append(img, label, fps, mini, close);
   document.body.append(el);
+
+  // ---- floating bubble while minimized: live thumbnail, drag it anywhere, tap to come back
+  const bubble = document.createElement('div');
+  bubble.className = 'mirror-bubble';
+  const bimg = document.createElement('img');
+  bimg.alt = '';
+  const live = document.createElement('span');
+  live.className = 'mirror-bubble-live';
+  const bx = document.createElement('button');
+  bx.className = 'mirror-bubble-x';
+  bx.textContent = '✕';
+  bubble.append(bimg, live, bx);
+  let minimized = false;
+  const pos = (() => { try { return JSON.parse(localStorage.getItem('federano.bubble') || 'null'); } catch (_) { return null; } })() || { x: innerWidth - 150, y: innerHeight - 190 };
+  const place = () => {
+    pos.x = Math.max(8, Math.min(innerWidth - 128, pos.x)); pos.y = Math.max(8, Math.min(innerHeight - 128, pos.y));
+    bubble.style.transform = `translate(${pos.x}px, ${pos.y}px)`;
+  };
+  let drag = null, pressTimer = 0;
+  bubble.addEventListener('pointerdown', (e) => {
+    if (e.target === bx) return;
+    drag = { sx: e.clientX, sy: e.clientY, x: pos.x, y: pos.y, moved: false };
+    bubble.setPointerCapture(e.pointerId);
+    bubble.classList.add('held');
+    pressTimer = setTimeout(() => { if (drag && !drag.moved) { drag = null; haptic(); stop(); } }, 900);   // long press: close
+  });
+  bubble.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+    if (Math.abs(dx) + Math.abs(dy) > 8) { drag.moved = true; clearTimeout(pressTimer); }
+    pos.x = drag.x + dx; pos.y = drag.y + dy; place();
+  });
+  bubble.addEventListener('pointerup', () => {
+    clearTimeout(pressTimer);
+    bubble.classList.remove('held');
+    if (!drag) return;
+    const tapped = !drag.moved;
+    drag = null;
+    // snap to the nearest side
+    pos.x = pos.x + 60 < innerWidth / 2 ? 16 : innerWidth - 136; place();
+    try { localStorage.setItem('federano.bubble', JSON.stringify(pos)); } catch (_) {}
+    if (tapped) restore();
+  });
+  bx.onclick = (e) => { e.stopPropagation(); haptic(); stop(); };
+
+  function minimize() {
+    if (minimized) return;
+    minimized = true;
+    el.classList.add('hidden');
+    place();
+    document.body.append(bubble);
+    requestAnimationFrame(() => bubble.classList.add('in'));
+  }
+  async function restore() {
+    if (!minimized) return;
+    minimized = false;
+    bubble.classList.remove('in');
+    setTimeout(() => bubble.remove(), 250);
+    el.classList.remove('hidden');
+    showChrome();
+    // the PC may have paused the mirror while the tablet was elsewhere: start it again (same tab, nothing asked)
+    fetch(`${API}/mirror/start`, { method: 'POST', cache: 'no-store', headers: PANEL_HEADERS }).catch(() => {});
+  }
+  window.federanoRestoreMirror = () => { if (overlay) overlay.restore(); };
 
   let alive = true, shown = 0, want = 0, lastUrl = '', frames = 0, lastOk = performance.now();
   let dl = 0, dlN = 0, statFrames = 0, statFrom = performance.now();
@@ -44,17 +112,24 @@ export function openMirror(title) {
     hideTimer = setTimeout(() => el.classList.remove('chrome'), 3000);
   };
   showChrome();
-  el.addEventListener('pointerdown', (e) => { if (e.target !== close) showChrome(); });
+  el.addEventListener('pointerdown', (e) => { if (e.target !== close && e.target !== mini) showChrome(); });
 
-  async function pull() {
+  async function pull(slowLane) {
     while (alive) {
+      if (minimized) {
+        if (!slowLane) { await new Promise((res) => setTimeout(res, 400)); continue; }
+        await new Promise((res) => setTimeout(res, 1200));
+      }
       try {
         // pipelined: each request asks for a frame newer than the one the other request is already fetching
         const after = Math.max(shown, want);
         want = after + 1;
         const t0 = performance.now();
         const r = await fetch(`${API}/mirror/frame?after=${after}`, { cache: 'no-store', headers: PANEL_HEADERS });
-        if (r.status === 410) { stop('O espelhamento parou no PC.'); return; }
+        if (r.status === 410) {
+          if (minimized) { await new Promise((res) => setTimeout(res, 1500)); continue; }   // restore() starts it again
+          stop('O espelhamento parou no PC.'); return;
+        }
         // no new picture yet (e.g. the next video of a playlist is loading): keep waiting, the PC is still there
         if (r.status !== 200 || (r.headers.get('Content-Type') || '').includes('json')) {
           want = shown;
@@ -70,6 +145,7 @@ export function openMirror(title) {
         shown = seq;
         const url = URL.createObjectURL(blob);
         img.src = url;
+        if (minimized) bimg.src = url;
         if (lastUrl) URL.revokeObjectURL(lastUrl);
         lastUrl = url;
         frames++;
@@ -87,16 +163,22 @@ export function openMirror(title) {
     clearInterval(fpsTimer);
     clearTimeout(hideTimer);
     el.remove();
+    bubble.remove();
     overlay = null;
+    window.federanoRestoreMirror = null;
+    if (bridge && bridge.setMirrorBubble) bridge.setMirrorBubble(false);
     if (lastUrl) URL.revokeObjectURL(lastUrl);
     fetch(`${API}/mirror/stop`, { method: 'POST', cache: 'no-store', headers: PANEL_HEADERS }).catch(() => {});
     if (message) toast(message);
   }
 
   close.onclick = () => { haptic(); stop(); };
-  overlay = { stop };
-  pull();
-  pull(); // a second request in flight: the next frame is already on its way while one is shown
+  mini.onclick = () => { haptic(); minimize(); };
+  overlay = { stop, restore, minimize };
+  // the app shows the bubble over other apps while a mirror is open (Android permission "Exibir sobre outros apps")
+  if (bridge && bridge.setMirrorBubble) bridge.setMirrorBubble(true);
+  pull(true);
+  pull(false); // a second request in flight: the next frame is already on its way while one is shown
 }
 
 // ---------------------------------------------------------------- "Ver no tablet?" pop-up
