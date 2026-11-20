@@ -1510,26 +1510,33 @@ export function requestPage(d) {
 // events that arrive together (several rules at once) are looked at together, a moment later
 function soon() { if (!navTimer) navTimer = setInterval(pump, 250); }
 
-// Federano: a song starting on Spotify opens the lyrics page by itself (the page with the "lyrics" widget), through
-// the same calm switch as rules: it waits while the panel is in use and counts down. The page is held while Spotify
-// plays; a minute after Spotify stops (or another player takes over) the panel goes back to where it was.
-const SP_RULE = 'federano-spotify';
-let spLast = '', spStopSince = 0;
+// Federano: a song starting on Spotify opens the lyrics page by itself (the page with the "lyrics" widget), straight
+// away: no countdown card and no waiting for the panel to be idle. A minute after Spotify stops (or another player takes
+// over) the panel goes back to the page it came from, if it is still on the lyrics.
+let spLast = '', spStopSince = 0, spFrom = -1;
 const lyricsPageId = () => pages.find((p) => (p.widgets || []).some((w) => w.type === 'lyrics'))?.id || null;
 export function spotifyAuto(m) {
   if (PREVIEW) return;
   const id = lyricsPageId();
   if (!id) return;
+  const idx = resolvePage(id);
   if (m && m.app === 'Spotify' && m.playing) {
     spStopSince = 0;
     const k = `${m.title}|${m.artist}`;
     if (k === spLast) return;
     spLast = k;
-    if (ruleHold?.rule === SP_RULE) ruleHold.at = Date.now();   // a new song keeps the page for longer
-    else requestPage({ page: id, rule: SP_RULE, name: 'Spotify', detail: m.title, hold: true });
+    if (idx >= 0 && idx !== curPage && $('approval').hidden && $('overview').hidden) {
+      if (spFrom < 0) spFrom = curPage;
+      lastTouch = Date.now();
+      softGo(idx);
+    }
   } else if (spLast) {
     if (!spStopSince) spStopSince = Date.now();
-    else if (Date.now() - spStopSince > 60_000) { spLast = ''; spStopSince = 0; requestBack(SP_RULE); }
+    else if (Date.now() - spStopSince > 60_000) {
+      spLast = ''; spStopSince = 0;
+      if (spFrom >= 0 && curPage === idx) softGo(spFrom);
+      spFrom = -1;
+    }
   }
 }
 

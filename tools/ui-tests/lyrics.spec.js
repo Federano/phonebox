@@ -97,8 +97,9 @@ test('a song on Spotify opens the lyrics page by itself', async ({ page }) => {
         { id: 'letra', title: 'Letra', enabled: true, widgets: [{ id: 'ly', type: 'lyrics', x: 0, y: 0, w: 12, h: 6, options: {} }] }] }));
   });
   await page.reload();
-  // the demo plays a song on Spotify: the panel moves to the lyrics page
+  // the demo plays a song on Spotify: the panel moves to the lyrics page, straight away and without the countdown card
   await expect(page.locator('#dots i').nth(1)).toHaveClass(/on/, { timeout: 15000 });
+  await expect(page.locator('#navCard')).not.toHaveClass(/(^| )on( |$)/);
 });
 
 test('translation under each line, switched on and off', async ({ page }) => {
