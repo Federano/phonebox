@@ -7,7 +7,7 @@ import { W } from '../registry.js';
 // photo (Spotify), the song, the controls and the next songs of the queue (tap one to play it). Data: GET /api/lyrics/now (lyrics from LRCLIB and the translation,
 // sent once per song). Without timed lyrics the text is shown still.
 
-const clock = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+const clock = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)), p2 = (n) => String(n).padStart(2, '0'); return s >= 3600 ? `${Math.floor(s / 3600)}:${p2(Math.floor(s / 60) % 60)}:${p2(s % 60)}` : `${Math.floor(s / 60)}:${p2(s % 60)}`; };
 const LEAD = 350;   // show a line a little before it is sung
 
 // ---- background: the artist's photo blurred behind the lyrics, and many thin lines waving together like fabric. The
@@ -66,6 +66,26 @@ function weave(g, W, H, st, cols) {
     g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
   }
 }
+// Federano: podcast background (animation 1, voice wave): three soft lines across the screen that move when someone talks
+// and lie almost flat in the pauses. st.voice is the PC's voice band (0..1), st.act fades it out when paused.
+function voiceWave(g, W, H, st, cols) {
+  g.clearRect(0, 0, W, H);
+  const s = W / 1000, t = st.now / 1000, v = st.voice * st.act;
+  const rgb = cols.map((c) => c.split(',').map(Number));
+  for (let k = 0; k < 3; k++) {
+    const c = rgb[k % rgb.length].join(','), y0 = H * .84, amp = (8 + 90 * v) * (1 - k * .25) * s;
+    g.beginPath();
+    for (let x = 0; x <= W; x += 4 * s) {
+      const env = Math.sin(Math.PI * x / W) ** 2, xs = x / s;
+      const y = y0 + env * amp * Math.sin(xs * (.018 + k * .006) + t * (3 + k)) * Math.cos(xs * .004 - t * .7);
+      x ? g.lineTo(x, y) : g.moveTo(x, y);
+    }
+    g.strokeStyle = `rgba(${c},${(.5 - k * .12) * (.45 + .55 * st.act)})`;
+    g.lineWidth = (3 - k * .7) * s; g.shadowColor = `rgb(${c})`; g.shadowBlur = 14 * s; g.stroke();
+  }
+  g.shadowBlur = 0;
+}
+
 /** The cover's own colours: its pixels grouped by hue, the four strongest groups (vivid and common first), each
  * brightened enough to show on a dark background. Greys and near-black are left out unless the cover has nothing else. */
 export function coverPalette(img) {
@@ -131,11 +151,18 @@ W.lyrics = {
     const bPlay = btn('ly-play', SVG.pause, 'Play / pausa'), bNext = btn('ly-next', SVG.next, 'Próxima música'), bFwd = btn('ly-fwd', SVG.fwd, 'Avançar 10 segundos');
     const ctl = h('div', 'ly-ctl', bBack, bPrev, bPlay, bNext, bFwd);
     const list = h('div', 'ly-lines');
+    // podcast episode: show, episode name, date / length / publisher and the description, where the lyrics go
+    const pShow = h('div', 'ly-pshow', ''), pName = h('div', 'ly-pname', ''), pMeta = h('div', 'ly-pmeta', ''), pDesc = h('div', 'ly-pdesc', '');
+    const pod = h('div', 'ly-pod', pShow, pName, pMeta, pDesc);
+    let podMode = false;
+    const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+    const longTime = (ms) => { const mi = Math.round(ms / 60000); return mi >= 60 ? `${Math.floor(mi / 60)} h ${mi % 60} min` : `${mi} min`; };
+    const niceDate = (d) => { const x = /^(\d{4})-(\d{2})-(\d{2})/.exec(d || ''); return x ? `${+x[3]} ${MONTHS[+x[2] - 1]} ${x[1]}` : (d || ''); };
     const note = h('div', 'ly-note', '');
     const qHead = h('div', 'ly-qh', 'A seguir'), queue = h('div', 'ly-queue');
     const bgPhoto = h('img', 'ly-bgphoto'); bgPhoto.alt = '';
     const fx = h('canvas', 'ly-fx');
-    const fxs = { bass: .3, mid: .3, high: .3, avgBass: .3, pulse: 0, lastBeat: 0, act: 1, ph: 0, lastMs: 0, now: 0, waveAt: -1e9, short: .3, long: .3, energy: 1, prevCols: null, colsAt: 0 };
+    const fxs = { bass: .3, mid: .3, high: .3, avgBass: .3, pulse: 0, lastBeat: 0, act: 1, ph: 0, lastMs: 0, now: 0, waveAt: -1e9, short: .3, long: .3, energy: 1, prevCols: null, colsAt: 0, voice: 0 };
     let cols = ['150,120,220', '120,90,200', '200,120,180', '90,140,220'], lastWant = 0, raf = 0, lastFrame = 0;
     function animate(ms) {
       raf = requestAnimationFrame(animate);
@@ -171,7 +198,8 @@ W.lyrics = {
       fxs.ph += (ms - (fxs.lastMs || ms)) / 1000 * (.5 + .7 * fxs.act);
       fxs.lastMs = ms;
       fxs.now = ms;
-      weave(fx.getContext('2d'), w, hgt, fxs, cols);
+      if (podMode) { fxs.voice += (nm * 1.4 - fxs.voice) * .15; voiceWave(fx.getContext('2d'), w, hgt, fxs, cols); }
+      else weave(fx.getContext('2d'), w, hgt, fxs, cols);
       // the blurred photo breathes (slow zoom) and lights up a little on the beat; dimmer when paused
       bgPhoto.style.transform = `scale(${(1 + .04 * Math.sin(ms / 4000)).toFixed(4)})`;
       bgPhoto.style.filter = `blur(24px) brightness(${((.44 + .06 * fxs.energy + .12 * fxs.pulse) * (playing ? 1 : .8)).toFixed(3)}) saturate(1.2)`;
@@ -183,7 +211,7 @@ W.lyrics = {
     }
     if (!matchMedia('(prefers-reduced-motion: reduce)').matches) raf = requestAnimationFrame(animate);
     box.append(
-      h('div', 'ly-main', bgPhoto, h('div', 'ly-bgveil'), fx, h('div', 'ly-top', chip, h('div', 'ly-topr', trBtn, fsBtn)), h('div', 'ly-words', list, note)),
+      h('div', 'ly-main', bgPhoto, h('div', 'ly-bgveil'), fx, h('div', 'ly-top', chip, h('div', 'ly-topr', trBtn, fsBtn)), h('div', 'ly-words', list, note, pod)),
       h('div', 'ly-card', h('div', 'ly-pic', img), h('div', 'ly-meta', title, artist), h('div', 'ly-prog', bar, times), ctl, qHead, queue));
     // the next songs; tapping one plays it (Spotify connected in the settings)
     let qKey = '', lastQueue = [];
@@ -240,14 +268,28 @@ W.lyrics = {
     const showPlay = () => {
       bPlay.innerHTML = m && m.playing ? SVG.pause : SVG.play;
       box.classList.toggle('ly-paused', !!m && !m.playing);
-      if (m) chip.textContent = `● ${m.app || 'PC'} · ${m.playing ? 'tocando' : 'pausado'}`;
+      if (m) chip.textContent = `● ${podMode ? 'Podcast' : (m.app || 'PC')} · ${m.playing ? 'tocando' : 'pausado'}`;
     };
     const jumpTo = (ms) => { if (!m) return; m = { ...m, posMs: Math.max(0, Math.min(m.durMs || Infinity, ms)), ageMs: 0 }; at = performance.now(); active = -2; draw(); };
     bPlay.onclick = () => media('playpause', '', () => { if (m) { m = { ...m, posMs: pos(), ageMs: 0, playing: !m.playing }; at = performance.now(); showPlay(); } });
-    bBack.onclick = () => media('seekby', '?ms=-10000', () => jumpTo(pos() - 10000));
-    bFwd.onclick = () => media('seekby', '?ms=10000', () => jumpTo(pos() + 10000));
+    let backMs = 10000, fwdMs = 10000;
+    const setSkips = (b, f) => {
+      if (b === backMs && f === fwdMs) return;
+      backMs = b; fwdMs = f;
+      bBack.innerHTML = SVG.back.replace('>10<', `>${b / 1000}<`); bFwd.innerHTML = SVG.fwd.replace('>10<', `>${f / 1000}<`);
+      bBack.setAttribute('aria-label', `Voltar ${b / 1000} segundos`); bBack.title = bBack.getAttribute('aria-label');
+      bFwd.setAttribute('aria-label', `Avançar ${f / 1000} segundos`); bFwd.title = bFwd.getAttribute('aria-label');
+    };
+    bBack.onclick = () => media('seekby', `?ms=-${backMs}`, () => jumpTo(pos() - backMs));
+    bFwd.onclick = () => media('seekby', `?ms=${fwdMs}`, () => jumpTo(pos() + fwdMs));
     bPrev.onclick = () => media('prev');
     bNext.onclick = () => media('next');
+    const setPod = (on) => {
+      podMode = on; box.classList.toggle('ly-podcast', on); pod.hidden = !on;
+      setSkips(on ? 15000 : 10000, on ? 30000 : 10000);
+      bPrev.setAttribute('aria-label', on ? 'Episódio anterior' : 'Música anterior'); bNext.setAttribute('aria-label', on ? 'Próximo episódio' : 'Próxima música');
+    };
+    setPod(false);
     // tap a line: the song jumps there (like Spotify)
     // scrolling the lyrics by hand: the page stops following the song for a while, so a later line can be picked
     let handUntil = 0;
@@ -348,7 +390,7 @@ W.lyrics = {
           const r = await fetch(`${API}/lyrics/now?have=${encodeURIComponent(key)}`, { cache: 'no-store', headers: PANEL_HEADERS });
           const j = await r.json();
           if (!j.playing) {
-            m = null; key = ''; box.classList.add('ly-idle'); title.textContent = 'Nada tocando no Spotify'; artist.textContent = ''; setArt('', false);
+            setPod(false); m = null; key = ''; box.classList.add('ly-idle'); title.textContent = 'Nada tocando no Spotify'; artist.textContent = ''; setArt('', false);
             chip.textContent = ''; trBtn.hidden = true; lastQueue = []; fillQueue([]);
             list.replaceChildren(); lines = []; note.textContent = '';
           } else {
@@ -361,6 +403,23 @@ W.lyrics = {
             chip.textContent = `● ${m.app || 'PC'} · ${m.playing ? 'tocando' : 'pausado'}`;
             total.textContent = m.durMs > 0 ? clock(m.durMs) : '';
             showPlay();
+            if (j.kind === 'episode' && j.episode) {
+              const ep = j.episode;
+              setPod(true);
+              title.textContent = ep.name || m.title; artist.textContent = ep.show || m.artist || '';
+              chip.textContent = `● Podcast · ${m.playing ? 'tocando' : 'pausado'}`;
+              pShow.textContent = ep.show || ''; pName.textContent = ep.name || m.title;
+              pMeta.textContent = [niceDate(ep.date), ep.durationMs > 0 ? longTime(ep.durationMs) : '', ep.publisher].filter(Boolean).join(' · ');
+              pDesc.textContent = ep.description || '';
+              lastQueue = []; fillQueue([]);
+              setArt(ep.image || (m.artId ? `${API}/art?v=${m.artId}` : ''), false);
+              tint();
+              if (j.key !== key) { key = j.key; pendingKey = ''; list.replaceChildren(); lines = []; active = -2; trBtn.hidden = true; note.textContent = ''; box.classList.remove('ly-plain', 'ly-none'); }
+              draw();
+              timer = setTimeout(poll, visible() ? 4000 : 8000);
+              return;
+            }
+            setPod(false);
             if (!j.artistPending) setArt(j.artistImage || (m.artId ? `${API}/art?v=${m.artId}` : ''), !!j.artistImage);
             tint();
             if (j.key !== key) {

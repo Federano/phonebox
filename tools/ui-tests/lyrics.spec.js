@@ -212,3 +212,31 @@ test('a discreet button shows only the lyrics, full screen, and brings the card 
   await page.locator('.ly-fsbtn').click();
   await expect(page.locator('.ly-card')).toBeVisible();
 });
+
+test('a podcast episode gets its own screen: show, episode, date, description, 15/30 s skips, voice wave, no errors', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await open(page, {
+    playing: true, key: 'ep 214\u0001café com ideias', kind: 'episode',
+    media: { app: 'Spotify', title: 'Ep. 214 — Por que a gente procrastina', artist: 'Café com Ideias', album: '', playing: true, posMs: 60000, durMs: 5880000, artId: 0, canSeek: true, ageMs: 0 },
+    episode: { name: 'Ep. 214 — Por que a gente procrastina', show: 'Café com Ideias', publisher: 'Rádio Aberta', description: 'Neste episódio a gente conversa sobre procrastinação.', date: '2026-11-15', image: null, durationMs: 5880000 },
+    lyrics: { lines: [], plain: '', instrumental: false, found: false }, pending: false, posOffsetMs: 0,
+  });
+  await expect(page.locator('.w.ly.ly-podcast')).toHaveCount(1);
+  await expect(page.locator('.ly-chip')).toHaveText('● Podcast · tocando');
+  await expect(page.locator('.ly-pshow')).toHaveText('Café com Ideias');
+  await expect(page.locator('.ly-pname')).toHaveText('Ep. 214 — Por que a gente procrastina');
+  await expect(page.locator('.ly-pmeta')).toHaveText('15 nov 2026 · 1 h 38 min · Rádio Aberta');
+  await expect(page.locator('.ly-times span').nth(1)).toHaveText('1:38:00');
+  await expect(page.locator('.ly-pdesc')).toContainText('procrastinação');
+  await expect(page.locator('.ly-back')).toHaveAttribute('aria-label', 'Voltar 15 segundos');
+  await expect(page.locator('.ly-fwd')).toHaveAttribute('aria-label', 'Avançar 30 segundos');
+  await expect(page.locator('.ly-note')).toBeHidden();
+  await expect(page.locator('.ly-queue')).toBeHidden();
+  await page.waitForTimeout(800);
+  // the voice wave is drawn on the background canvas
+  const drawn = await page.evaluate(() => { const c = document.querySelector('.ly-fx'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; return n; });
+  expect(drawn).toBeGreaterThan(500);
+  await page.screenshot({ path: test.info().outputPath('podcast.png') });
+  expect(errors).toEqual([]);
+});
