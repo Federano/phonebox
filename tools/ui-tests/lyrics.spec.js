@@ -170,3 +170,19 @@ test('a new song shows at once and its lyrics follow; the queue stays during a s
   await expect(page.locator('.ly-q')).toHaveCount(1);
   await expect(page.locator('.ly-q')).toContainText('Hurt');
 });
+
+test('while Spotify plays the panel does not go home by itself', async ({ page }) => {
+  await page.goto('/panel/');
+  await page.evaluate(() => {
+    localStorage.clear();
+    localStorage.setItem('pb-demo-config', JSON.stringify({ night: { enabled: false }, shortcuts: [],
+      display: { touchGraceSec: 0, minDwellSec: 0, switchCountdownSec: 0, idleReturnSec: 3, homePage: 'home' },
+      pages: [{ id: 'home', title: 'Home', enabled: true, widgets: [{ id: 'c', type: 'clock', x: 0, y: 0, w: 12, h: 6, options: {} }] },
+        { id: 'letra', title: 'Letra', enabled: true, widgets: [{ id: 'ly', type: 'lyrics', x: 0, y: 0, w: 12, h: 6, options: {} }] }] }));
+  });
+  await page.reload();
+  // the demo plays on Spotify: the panel goes to the lyrics and stays there well past the 3 s idle return
+  await expect(page.locator('#dots i').nth(1)).toHaveClass(/on/, { timeout: 15000 });
+  await page.waitForTimeout(8000);
+  await expect(page.locator('#dots i').nth(1)).toHaveClass(/on/);
+});

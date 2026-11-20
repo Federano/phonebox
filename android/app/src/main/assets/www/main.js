@@ -1547,6 +1547,8 @@ export function requestBack(rule) {
 const idleLimit = () => pages[curPage]?.idleSec ?? dsp().idleReturnSec ?? 90;
 function idleDue() {
   if (pagePaused) return false;
+  // Federano: while Spotify plays the panel stays where it is ("Ninguém por perto" does not take it home)
+  if (media && media.app === 'Spotify' && media.playing) return false;
   const idle = idleLimit();
   if (!(idle > 0)) return false;
   const maxHold = (dsp().holdMaxMin ?? 30) * 60_000;
