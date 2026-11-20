@@ -13,20 +13,30 @@ const LEAD = 350;   // show a line a little before it is sung
 // ---- background: the artist's photo blurred behind the lyrics, and many thin lines waving together like fabric. The
 // lines follow the PC's sound (the agent's spectrum analyser, the same as the Spectrum bars widget) and take the
 // cover's colours. Drawn ~30 times a second, only while the page is on screen.
-function weave(g, W, H, t, lvl, cols) {
+// st: bass / mid / high (0..1, smoothed), pulse (1 on a beat, fading), act (1 playing .. ~0 paused), ph (phase, moves
+// with act so a paused song almost stops the lines)
+function weave(g, W, H, st, cols) {
   g.clearRect(0, 0, W, H);
-  const n = 22, s = W / 660;
+  const n = 22, s = W / 660, ph = st.ph;
   for (let k = 0; k < n; k++) {
-    const y0 = H * (.1 + .85 * k / (n - 1)), c = cols[k % cols.length];
+    const f = k / (n - 1);                       // 0 = top line, 1 = bottom line
+    const y0 = H * (.1 + .85 * f), c = cols[k % cols.length];
+    // the bottom lines follow the bass, the middle ones the voice, the top ones the highs
+    const lvl = (f > .6 ? st.bass : f < .35 ? st.high : st.mid) * 1.3;
+    const amp = (6 + 34 * lvl * st.act) + 4;
     g.beginPath();
     for (let x = 0; x <= W; x += 6 * s) {
-      const y = y0 + (Math.sin(x / s * .009 + t * .9 + k * .35) * (10 + 22 * lvl) + Math.sin(x / s * .021 - t * 1.4 + k * .2) * 6) * s;
+      const y = y0 + (Math.sin(x / s * .009 + ph * .9 + k * .35) * amp + Math.sin(x / s * .021 - ph * 1.4 + k * .2) * 6) * s;
       x ? g.lineTo(x, y) : g.moveTo(x, y);
     }
-    g.strokeStyle = `rgba(${c},${(.16 + .1 * Math.sin(k + t)).toFixed(3)})`;
-    g.lineWidth = 1.2 * s;
+    // a beat makes the lines glow and thicken for a moment
+    const alpha = (.16 + .08 * Math.sin(k + ph)) * (.35 + .65 * st.act) + .45 * st.pulse;
+    g.strokeStyle = `rgba(${c},${Math.min(.9, alpha).toFixed(3)})`;
+    g.lineWidth = (1.2 + 1.8 * st.pulse) * s;
+    if (st.pulse > .2) { g.shadowColor = `rgb(${c})`; g.shadowBlur = 10 * st.pulse * s; } else g.shadowBlur = 0;
     g.stroke();
   }
+  g.shadowBlur = 0;
 }
 /** The cover's own colours: its pixels grouped by hue, the four strongest groups (vivid and common first), each
  * brightened enough to show on a dark background. Greys and near-black are left out unless the cover has nothing else. */
@@ -97,7 +107,8 @@ W.lyrics = {
     const qHead = h('div', 'ly-qh', 'A seguir'), queue = h('div', 'ly-queue');
     const bgPhoto = h('img', 'ly-bgphoto'); bgPhoto.alt = '';
     const fx = h('canvas', 'ly-fx');
-    let cols = ['150,120,220', '120,90,200', '200,120,180', '90,140,220'], lvl = .3, lastWant = 0, raf = 0, lastFrame = 0;
+    const fxs = { bass: .3, mid: .3, high: .3, avgBass: .3, pulse: 0, lastBeat: 0, act: 1, ph: 0, lastMs: 0 };
+    let cols = ['150,120,220', '120,90,200', '200,120,180', '90,140,220'], lastWant = 0, raf = 0, lastFrame = 0;
     function animate(ms) {
       raf = requestAnimationFrame(animate);
       if (!visible() || ms - lastFrame < 33) return;
@@ -105,13 +116,22 @@ W.lyrics = {
       const w = Math.round(fx.clientWidth), hgt = Math.round(fx.clientHeight);
       if (!w || !hgt) return;
       if (fx.width !== w || fx.height !== hgt) { fx.width = w; fx.height = hgt; }
-      // loudness from the PC's sound: the lower bands, smoothed; calm when there is no sound data or the song is paused
+      // the PC's sound (48 bands): bass, voice and highs, smoothed; a beat when the bass jumps well over its average
       const bands = Date.now() - (D.spectrumAt || 0) < 800 ? D.spectrum : null;
-      let target = .25;
-      if (m && !m.playing) target = .05;
-      else if (Array.isArray(bands) && bands.length) target = Math.min(1, bands.slice(0, 14).reduce((a, v) => a + v, 0) / 14 / 55);
-      lvl += (target - lvl) * .12;
-      weave(fx.getContext('2d'), w, hgt, ms / 1000, lvl, cols);
+      const playing = !!(m && m.playing);
+      const part = (a, b) => bands ? Math.min(1, bands.slice(a, b).reduce((x, v) => x + v, 0) / (b - a) / 60) : .3;
+      const nb = part(0, 10), nm = part(10, 30), nh = part(30, 48);
+      fxs.bass += (nb - fxs.bass) * .25; fxs.mid += (nm - fxs.mid) * .2; fxs.high += (nh - fxs.high) * .2;
+      fxs.avgBass += (nb - fxs.avgBass) * .03;
+      if (playing && bands && nb > fxs.avgBass * 1.35 + .08 && ms - fxs.lastBeat > 280) { fxs.pulse = 1; fxs.lastBeat = ms; }
+      fxs.pulse *= .88;
+      fxs.act += ((playing ? 1 : .06) - fxs.act) * .05;
+      fxs.ph += (ms - (fxs.lastMs || ms)) / 1000 * (.5 + .7 * fxs.act);
+      fxs.lastMs = ms;
+      weave(fx.getContext('2d'), w, hgt, fxs, cols);
+      // the blurred photo breathes (slow zoom) and lights up a little on the beat; dimmer when paused
+      bgPhoto.style.transform = `scale(${(1 + .04 * Math.sin(ms / 4000)).toFixed(4)})`;
+      bgPhoto.style.filter = `blur(24px) brightness(${((.48 + .12 * fxs.pulse) * (playing ? 1 : .8)).toFixed(3)}) saturate(1.2)`;
       // keep the agent's analyser running while this page shows (it stops a few seconds after the last ask)
       if (Date.now() - lastWant > 2000) {
         lastWant = Date.now();
