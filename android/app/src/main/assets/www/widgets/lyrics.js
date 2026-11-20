@@ -28,11 +28,29 @@ function weave(g, W, H, t, lvl, cols) {
     g.stroke();
   }
 }
-const shade = (rgb, k) => rgb.map((v) => Math.round(Math.min(255, v * k)));
-function coverColours(avg) {
-  // four tones around the cover's colour: itself, lighter, and two rotated hues
-  const [r, g, b] = avg;
-  return [avg, shade(avg, 1.35), [b, r, g], [g, b, r]].map((c) => c.join(','));
+/** The cover's own colours: its pixels grouped by hue, the four strongest groups (vivid and common first), each
+ * brightened enough to show on a dark background. Greys and near-black are left out unless the cover has nothing else. */
+export function coverPalette(img) {
+  const c = document.createElement('canvas'); c.width = c.height = 40;
+  const g = c.getContext('2d'); g.drawImage(img, 0, 0, 40, 40);
+  const d = g.getImageData(0, 0, 40, 40).data;
+  const bins = Array.from({ length: 12 }, () => ({ w: 0, r: 0, g: 0, b: 0 }));
+  let grey = { w: 0, r: 0, g: 0, b: 0 };
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i], gg = d[i + 1], b = d[i + 2], mx = Math.max(r, gg, b), mn = Math.min(r, gg, b), sat = mx ? (mx - mn) / mx : 0;
+    if (mx < 35) continue;
+    if (sat < .18) { grey.w += 1; grey.r += r; grey.g += gg; grey.b += b; continue; }
+    let hue;
+    if (mx === r) hue = ((gg - b) / (mx - mn) + 6) % 6; else if (mx === gg) hue = (b - r) / (mx - mn) + 2; else hue = (r - gg) / (mx - mn) + 4;
+    const bin = bins[Math.floor(hue * 2) % 12], w = sat * (mx / 255);
+    bin.w += w; bin.r += r * w; bin.g += gg * w; bin.b += b * w;
+  }
+  const lift = (rgb) => { const m2 = Math.max(...rgb) || 1, k = Math.max(1, 200 / m2); return rgb.map((v) => Math.round(Math.min(255, v * k))); };
+  const picked = bins.filter((b) => b.w > 1).sort((a, b) => b.w - a.w).slice(0, 4).map((b) => lift([b.r / b.w, b.g / b.w, b.b / b.w]));
+  if (!picked.length && grey.w) picked.push(lift([grey.r / grey.w, grey.g / grey.w, grey.b / grey.w]));
+  if (!picked.length) picked.push([150, 120, 220]);
+  while (picked.length < 4) picked.push(picked[picked.length % Math.max(1, picked.length)].map((v) => Math.round(v * .8)));
+  return picked;
 }
 const SVG = {
   play: '<svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></svg>',
@@ -65,7 +83,7 @@ W.lyrics = {
     const qHead = h('div', 'ly-qh', 'A seguir'), queue = h('div', 'ly-queue');
     const bgPhoto = h('img', 'ly-bgphoto'); bgPhoto.alt = '';
     const fx = h('canvas', 'ly-fx');
-    let cols = coverColours([120, 90, 200]), lvl = .3, lastWant = 0, raf = 0, lastFrame = 0;
+    let cols = ['150,120,220', '120,90,200', '200,120,180', '90,140,220'], lvl = .3, lastWant = 0, raf = 0, lastFrame = 0;
     function animate(ms) {
       raf = requestAnimationFrame(animate);
       if (!visible() || ms - lastFrame < 33) return;
@@ -122,7 +140,7 @@ W.lyrics = {
     applyTr();
     trBtn.onclick = () => { haptic(); showTr = !showTr; applyTr(); try { localStorage.setItem('federano.lyricsTr', showTr ? '1' : '0'); } catch (_) {} active = -2; draw(); };
 
-    let alive = true, key = '', pendingKey = '', lines = [], active = -2, m = null, at = 0, artId = -1, timer = 0;
+    let follow = false, alive = true, key = '', pendingKey = '', lines = [], active = -2, m = null, at = 0, artId = -1, timer = 0;
     const visible = () => pages[curPage] === page && !document.body.classList.contains('night');
     const pos = () => !m ? 0 : Math.min(m.durMs || Infinity, m.posMs + (m.ageMs || 0) + (m.playing ? performance.now() - at : 0));
 
@@ -150,9 +168,14 @@ W.lyrics = {
     bPrev.onclick = () => media('prev');
     bNext.onclick = () => media('next');
     // tap a line: the song jumps there (like Spotify)
+    // scrolling the lyrics by hand: the page stops following the song for a while, so a later line can be picked
+    let handUntil = 0;
+    const byHand = () => { handUntil = Date.now() + 6000; };
+    for (const ev of ['touchstart', 'touchmove', 'wheel', 'pointerdown']) list.addEventListener(ev, byHand, { passive: true });
     list.addEventListener('click', (e) => {
       const el = e.target.closest('.ly-line'); if (!el || el.dataset.t == null) return;
       const t = +el.dataset.t;
+      handUntil = 0;   // a line was picked: follow the song again from there
       media('seek', `?ms=${Math.max(0, t - 200)}`, () => jumpTo(t));
     });
     // tap the progress bar: jump to that point
@@ -175,11 +198,16 @@ W.lyrics = {
       artId = m.artId;
       const probe = new Image();
       probe.onload = () => {
-        const c = averageColor(probe);
-        if (c) {
-          box.style.setProperty('--ly-bg', `rgb(${c.split(',').map((v) => Math.round(+v * .45)).join(',')})`);
-          cols = coverColours(c.split(',').map((v) => +v));
-        }
+        // the whole page takes the cover's colours: background, card, lines, bar, buttons, labels
+        let pal;
+        try { pal = coverPalette(probe); } catch (_) { return; }
+        cols = pal.map((c) => c.join(','));
+        const [a, b2] = pal, dark = (c, k) => `rgb(${c.map((v) => Math.round(v * k)).join(',')})`;
+        box.style.setProperty('--ly-bg', dark(a, .34));
+        box.style.setProperty('--ly-bg2', dark(b2, .16));
+        box.style.setProperty('--ly-accent', `rgb(${a.join(',')})`);
+        box.style.setProperty('--ly-accent2', `rgb(${b2.join(',')})`);
+        box.style.setProperty('--ly-card', dark(a, .12));
       };
       probe.src = `${API}/art?v=${m.artId}`;
     }
@@ -212,9 +240,14 @@ W.lyrics = {
       if (!lines.length) return;
       let i = -1;
       for (let k = 0; k < lines.length; k++) { if (lines[k].t <= p + LEAD) i = k; else break; }
-      if (i === active) return;
-      active = i;
-      lines.forEach((l, k) => { l.el.classList.toggle('on', k === i); l.el.classList.toggle('past', k < i); });
+      const hand = Date.now() < handUntil;
+      if (i === active && !(follow && !hand)) return;
+      if (i !== active) {
+        active = i;
+        lines.forEach((l, k) => { l.el.classList.toggle('on', k === i); l.el.classList.toggle('past', k < i); });
+      }
+      follow = hand;   // after a hand scroll ends, go back to the line being sung once
+      if (hand) return;
       // the line being sung goes to the middle
       const el = lines[Math.max(0, i)].el;
       list.scrollTo({ top: Math.max(0, el.offsetTop + el.offsetHeight / 2 - list.clientHeight / 2), behavior: 'smooth' });

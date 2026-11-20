@@ -186,3 +186,16 @@ test('while Spotify plays the panel does not go home by itself', async ({ page }
   await page.waitForTimeout(8000);
   await expect(page.locator('#dots i').nth(1)).toHaveClass(/on/);
 });
+
+test('scrolling the lyrics by hand is not pulled back to the line being sung', async ({ page }) => {
+  const many = Array.from({ length: 40 }, (_, i) => ({ t: 1000 + i * 3000, text: 'Line number ' + (i + 1) }));
+  await open(page, { ...SONG, media: { ...SONG.media, posMs: 4000 }, lyrics: { found: true, instrumental: false, plain: '', lines: many } });
+  await expect(page.locator('.ly-line')).toHaveCount(40);
+  await page.waitForTimeout(800);
+  const list = page.locator('.ly-lines');
+  await list.hover();
+  await page.mouse.wheel(0, 1500);
+  await page.waitForTimeout(2500);   // the song moves on a line meanwhile
+  const top = await list.evaluate((el) => el.scrollTop);
+  expect(top).toBeGreaterThan(900);   // still where the hand left it, not back at line 2
+});

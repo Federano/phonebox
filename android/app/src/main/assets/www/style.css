@@ -1466,3 +1466,16 @@ body.controls-top .ap-foot { order: -1; margin-bottom: 4px; }
 .ly-fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .ly-words { z-index: 1; }
 .ly-line { text-shadow: 0 2px 14px rgba(0, 0, 0, .35); }
+/* lyrics page: everything in the cover's colours (set by widgets/lyrics.js from the album art) */
+.w.ly { background: linear-gradient(135deg, var(--ly-bg), var(--ly-bg2, #05080d)); }
+.ly-card { background: color-mix(in srgb, var(--ly-card, #000) 70%, transparent); }
+.ly-chip { color: var(--ly-accent, #1ed760); }
+.ly-tr.on i { background: var(--ly-accent, #1ed760); }
+.ly-bar i { background: var(--ly-accent, #fff); }
+.ly-btn.ly-play { background: var(--ly-accent, #fff); color: #0b0b0b; }
+.ly-btn { background: color-mix(in srgb, var(--ly-accent2, #fff) 18%, transparent); }
+.ly-qh { color: color-mix(in srgb, var(--ly-accent, #fff) 70%, transparent); }
+.ly-line .ly-tl { color: color-mix(in srgb, var(--ly-accent, #fff) 55%, transparent); }
+.ly-line.on .ly-tl { color: color-mix(in srgb, var(--ly-accent, #fff) 85%, white); }
+.ly-line.past .ly-tl { color: color-mix(in srgb, var(--ly-accent, #fff) 25%, transparent); }
+.ly-bgveil { background: radial-gradient(80% 75% at 50% 45%, color-mix(in srgb, var(--ly-bg, #000) 10%, transparent), color-mix(in srgb, var(--ly-bg, #000) 70%, transparent)); }
