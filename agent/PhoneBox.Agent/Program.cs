@@ -852,7 +852,8 @@ app.MapGet("/api/mirror/frame", async (long? after, HttpResponse res, MirrorCapt
 app.MapGet("/api/lyrics/now", async (string? have, MediaMonitor media, LyricsService lyrics, SpotifyControl spotify, CancellationToken ct) =>
 {
     var m = media.Snapshot();
-    if (m is null || m.Title.Length == 0) return Results.Json(new { playing = false });
+    // only Spotify: a video in the browser or another player leaves this page alone
+    if (m is null || m.Title.Length == 0 || m.App != "Spotify") return Results.Json(new { playing = false, other = m?.App });
     var key = LyricsService.KeyOf(m.Title, m.Artist);
     // Federano: a podcast episode playing on Spotify gets its own screen (no lyrics to look for)
     if (m.App == "Spotify")

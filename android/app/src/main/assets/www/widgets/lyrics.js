@@ -348,7 +348,7 @@ W.lyrics = {
           const r = await fetch(`${API}/lyrics/now?have=${encodeURIComponent(key)}`, { cache: 'no-store', headers: PANEL_HEADERS });
           const j = await r.json();
           if (!j.playing) {
-            m = null; key = ''; box.classList.add('ly-idle'); title.textContent = 'Nada tocando no PC'; artist.textContent = ''; setArt('', false);
+            m = null; key = ''; box.classList.add('ly-idle'); title.textContent = 'Nada tocando no Spotify'; artist.textContent = ''; setArt('', false);
             chip.textContent = ''; trBtn.hidden = true; lastQueue = []; fillQueue([]);
             list.replaceChildren(); lines = []; note.textContent = '';
           } else {

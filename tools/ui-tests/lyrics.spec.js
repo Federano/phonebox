@@ -60,7 +60,7 @@ test('no lyrics: says so, the photo stays', async ({ page }) => {
 
 test('nothing playing', async ({ page }) => {
   await open(page, { playing: false });
-  await expect(page.locator('.ly-title')).toHaveText('Nada tocando no PC');
+  await expect(page.locator('.ly-title')).toHaveText('Nada tocando no Spotify');
 });
 
 test('controls drive the PC player and a tapped line jumps there', async ({ page }) => {
