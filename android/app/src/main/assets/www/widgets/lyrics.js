@@ -17,7 +17,7 @@ const LEAD = 350;   // show a line a little before it is sung
 // with act so a paused song almost stops the lines), now (ms) and waveAt (ms: a new lyric line started)
 function weave(g, W, H, st, cols) {
   g.clearRect(0, 0, W, H);
-  const n = 22, s = W / 660, ph = st.ph, t = st.now / 1000;
+  const n = 16, s = W / 660, ph = st.ph, t = st.now / 1000;
   const rgb = cols.map((c) => c.split(',').map(Number));
   const waveT = (st.now - st.waveAt) / 1000, waveR = waveT * 520 * s;
   for (let k = 0; k < n; k++) {
@@ -33,7 +33,7 @@ function weave(g, W, H, st, cols) {
     const amp = ((6 + 34 * lvl * st.act) * depth) + 4;
     const sp = depth;
     g.beginPath();
-    for (let x = 0; x <= W; x += 12 * s) {
+    for (let x = 0; x <= W; x += 16 * s) {
       let y = y0 + (Math.sin(x / s * .009 + ph * .9 * sp + k * .35) * amp + Math.sin(x / s * .021 - ph * 1.4 * sp + k * .2) * 6 * depth) * s;
       // a ring of light moving out from the centre when a new lyric line starts
       if (waveT < 1.4) { const d = Math.hypot(x - W / 2, y0 - H * .45); y += Math.exp(-((d - waveR) ** 2) / (1800 * s * s)) * 14 * s * (1 - waveT / 1.4); }
@@ -141,7 +141,21 @@ W.lyrics = {
     const niceDate = (d) => { const x = /^(\d{4})-(\d{2})-(\d{2})/.exec(d || ''); return x ? `${+x[3]} ${MONTHS[+x[2] - 1]} ${x[1]}` : (d || ''); };
     const note = h('div', 'ly-note', '');
     const qHead = h('div', 'ly-qh', 'A seguir'), queue = h('div', 'ly-queue');
-    const bgPhoto = h('img', 'ly-bgphoto'); bgPhoto.alt = '';
+    const bgPhoto = h('canvas', 'ly-bgphoto'); bgPhoto.width = 120; bgPhoto.height = 80;
+    const paintBg = (pic) => {
+      // same shape as the screen area, tiny: 120 px wide
+      const cw = bgPhoto.clientWidth, chh = bgPhoto.clientHeight;
+      if (cw && chh) { const hh = Math.max(40, Math.round(120 * chh / cw)); if (bgPhoto.height !== hh) bgPhoto.height = hh; }
+      const g = bgPhoto.getContext('2d'), W2 = bgPhoto.width, H2 = bgPhoto.height;
+      g.clearRect(0, 0, W2, H2);
+      if (!pic || !pic.naturalWidth) return;
+      // cover crop to the canvas shape
+      const r = Math.max(W2 / pic.naturalWidth, H2 / pic.naturalHeight), dw = pic.naturalWidth * r, dh = pic.naturalHeight * r;
+      try { g.filter = 'blur(3px) saturate(1.2) brightness(.48)'; } catch (_) {}
+      g.drawImage(pic, (W2 - dw) / 2, (H2 - dh) / 2, dw, dh);
+      g.filter = 'none';
+      if (!('filter' in g)) { g.fillStyle = 'rgba(0,0,0,.5)'; g.fillRect(0, 0, W2, H2); }
+    };
     const fx = h('canvas', 'ly-fx');
     // breathing vignette: the dark edges slowly close in and open up, a little more on the beat
     const vig = h('div', 'ly-vig');
@@ -153,7 +167,8 @@ W.lyrics = {
       lastFrame = ms;
       const w = Math.round(fx.clientWidth), hgt = Math.round(fx.clientHeight);
       if (!w || !hgt) return;
-      if (fx.width !== w || fx.height !== hgt) { fx.width = w; fx.height = hgt; }
+      const cw = Math.round(w * .6), ch = Math.round(hgt * .6);
+      if (fx.width !== cw || fx.height !== ch) { fx.width = cw; fx.height = ch; }
       // the PC's sound (48 bands): bass, voice and highs, smoothed; a beat when the bass jumps well over its average
       const bands = Date.now() - (D.spectrumAt || 0) < 800 ? D.spectrum : null;
       const playing = !!(m && m.playing);
@@ -167,8 +182,8 @@ W.lyrics = {
       fxs.ph += (ms - (fxs.lastMs || ms)) / 1000 * (.5 + .7 * fxs.act);
       fxs.lastMs = ms;
       fxs.now = ms;
-      if (podMode) { fxs.voice += (nm * 1.4 - fxs.voice) * .15; voiceWave(fx.getContext('2d'), w, hgt, fxs, cols); }
-      else weave(fx.getContext('2d'), w, hgt, fxs, cols);
+      if (podMode) { fxs.voice += (nm * 1.4 - fxs.voice) * .15; voiceWave(fx.getContext('2d'), cw, ch, fxs, cols); }
+      else weave(fx.getContext('2d'), cw, ch, fxs, cols);
       // the vignette breathes (a little darker on the beat); the blurred photo slowly zooms in and out
       vig.style.opacity = ((.55 + .3 * Math.sin(ms / 2600)) * (playing ? 1 : .7) + .15 * fxs.pulse).toFixed(3);
       bgPhoto.style.transform = `scale(${(1 + .04 * Math.sin(ms / 4000)).toFixed(4)})`;
@@ -293,7 +308,8 @@ W.lyrics = {
       img.dataset.src = src || '';
       box.classList.toggle('ly-noart', !src);
       box.classList.toggle('ly-artist-photo', !!isArtist);
-      for (const el of [img, bgPhoto]) { if (src) el.src = src; else el.removeAttribute('src'); }
+      img.onload = () => paintBg(img);
+      if (src) img.src = src; else { img.removeAttribute('src'); paintBg(null); }
     }
     function tint() {
       // the background takes the cover's colour (same-origin /api/art, so it can be read)

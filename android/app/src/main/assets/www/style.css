@@ -1505,3 +1505,6 @@ body.controls-top .ap-foot { order: -1; margin-bottom: 4px; }
 .ly-line { transition: color .18s ease-out, transform .18s ease-out; }
 .ly-bgphoto { will-change: transform; }
 .ly-vig { will-change: opacity; }
+/* lyrics page, smoother: the blurred photo is a tiny pre-blurred canvas scaled up (no CSS filter) */
+.ly-bgphoto { filter: none; object-fit: fill; transform: translateZ(0); }
+.ly-line { text-shadow: 0 1px 4px rgba(0, 0, 0, .35); }
