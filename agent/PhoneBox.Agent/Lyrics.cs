@@ -16,8 +16,9 @@ public sealed partial class LyricsService(ILogger<LyricsService> log)
     /// <param name="Lines">Timed lines (empty when only plain text or nothing was found).</param>
     /// <param name="Trans">Portuguese translation, one per line (the timed lines, else the plain text's lines); null when
     /// the song is already in Portuguese or the translation failed.</param>
+    /// <param name="Seconds">Length of the recording the lyrics belong to (0 = unknown).</param>
     public sealed record Result(string Key, IReadOnlyList<Line> Lines, string Plain, bool Instrumental, bool Found,
-        IReadOnlyList<string>? Trans = null, string Lang = "");
+        IReadOnlyList<string>? Trans = null, string Lang = "", double Seconds = 0);
 
     static readonly HttpClient Http = MakeClient();
     static HttpClient MakeClient()
@@ -31,13 +32,37 @@ public sealed partial class LyricsService(ILogger<LyricsService> log)
     /// <summary>The song the lyrics page asked about last (a new one makes the Spotify queue be read again).</summary>
     public string LastKey { get; set; } = "";
 
+    // ---- how far Windows' position runs behind the player's own (Spotify reports ~0.5 s late); the median of the last
+    // readings, so one slow answer does not make the lyrics jump
+    private readonly Queue<long> _offsets = new();
+    private readonly object _offGate = new();
+    public long Offset(string key, long? sample)
+    {
+        lock (_offGate)
+        {
+            if (key != _offKey) { _offKey = key; }
+            if (sample is { } s && Math.Abs(s) < 3000) { _offsets.Enqueue(s); while (_offsets.Count > 7) _offsets.Dequeue(); }
+            if (_offsets.Count == 0) return 0;
+            var sorted = _offsets.Order().ToArray();
+            return sorted[sorted.Length / 2];
+        }
+    }
+    private string _offKey = "";
+
     public static string KeyOf(string title, string artist) => (title.Trim() + "\u0001" + artist.Trim()).ToLowerInvariant();
 
     public Task<Result> GetAsync(string title, string artist, string album, long durationMs)
     {
         var key = KeyOf(title, artist);
         if (_cache.Count > 300) _cache.Clear();
-        return _cache.GetOrAdd(key, _ => FetchAsync(key, title, artist, album, durationMs));
+        var task = _cache.GetOrAdd(key, _ => FetchAsync(key, title, artist, album, durationMs));
+        // fetched ahead without the length (next song of the queue) and it belongs to another recording: look again
+        if (durationMs > 0 && task.IsCompletedSuccessfully && task.Result is { Found: true, Seconds: > 0 } r && Math.Abs(r.Seconds * 1000 - durationMs) > 4000)
+        {
+            task = FetchAsync(key, title, artist, album, durationMs);
+            _cache[key] = task;
+        }
+        return task;
     }
 
     private async Task<Result> FetchAsync(string key, string title, string artist, string album, long durationMs)
@@ -56,7 +81,7 @@ public sealed partial class LyricsService(ILogger<LyricsService> log)
                 var search = JsonNode.Parse(await Http.GetStringAsync($"search?track_name={Uri.EscapeDataString(title)}&artist_name={Uri.EscapeDataString(artist)}")) as JsonArray;
                 hit = search?.Where(x => x is not null)
                     .OrderByDescending(x => !string.IsNullOrEmpty(x!["syncedLyrics"]?.GetValue<string>()))
-                    .ThenBy(x => Math.Abs((x!["duration"]?.GetValue<double>() ?? 0) * 1000 - durationMs))
+                    .ThenBy(x => durationMs > 0 ? Math.Abs((x!["duration"]?.GetValue<double>() ?? 0) * 1000 - durationMs) : 0)
                     .FirstOrDefault();
             }
             if (hit is null) return new(key, [], "", false, false);
@@ -66,7 +91,7 @@ public sealed partial class LyricsService(ILogger<LyricsService> log)
             var lines = ParseLrc(synced);
             var texts = lines.Count > 0 ? lines.Select(l => l.Text).ToList() : plain.Split('\n').Select(t => t.Trim()).ToList();
             var (trans, lang) = instrumental ? (null, "") : await TranslateAsync(texts);
-            return new(key, lines, plain, instrumental, true, trans, lang);
+            return new(key, lines, plain, instrumental, true, trans, lang, hit["duration"]?.GetValue<double>() ?? 0);
         }
         catch (Exception ex)
         {

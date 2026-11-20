@@ -282,6 +282,16 @@ public sealed class SpotifyControl : IDisposable
 
     /// <summary>The photo of the artist of the track Spotify is playing now (null when not connected or unknown).
     /// Spotify is asked at most every 5 s; the photo of each artist once.</summary>
+    private (long Ms, long At, string Track)? _progress;
+
+    /// <summary>Spotify's own position of the playing song now (counted on from its last reading, up to 15 s old).</summary>
+    public long? ProgressNow(string title)
+    {
+        if (_progress is not { } p || !string.Equals(p.Track, title, StringComparison.OrdinalIgnoreCase)) return null;
+        var age = System.Diagnostics.Stopwatch.GetElapsedTime(p.At).TotalMilliseconds;
+        return age > 15_000 ? null : p.Ms + (long)age;
+    }
+
     public async Task<string?> PlayingArtistImage(string title, CancellationToken ct)
     {
         var cached = _nowArtist;
@@ -289,7 +299,12 @@ public sealed class SpotifyControl : IDisposable
         string? image = null;
         try
         {
+            var t0 = System.Diagnostics.Stopwatch.GetTimestamp();
             var playing = await Request(HttpMethod.Get, "me/player/currently-playing", null, ct);
+            // Spotify's own position, read at about the middle of the request (Windows reports Spotify ~0.5 s late)
+            if (playing?["progress_ms"]?.GetValue<long>() is { } progress && playing?["is_playing"]?.GetValue<bool>() == true)
+                _progress = (progress, t0 + (System.Diagnostics.Stopwatch.GetTimestamp() - t0) / 2, playing?["item"]?["name"]?.GetValue<string>() ?? "");
+            else _progress = null;
             var item = playing?["item"];
             var id = (item?["artists"] as JsonArray)?.FirstOrDefault()?["id"]?.GetValue<string>();
             if (id is { Length: > 0 } && System.Text.RegularExpressions.Regex.IsMatch(id, "^[A-Za-z0-9]{22}$"))

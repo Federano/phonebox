@@ -855,14 +855,24 @@ app.MapGet("/api/lyrics/now", async (string? have, MediaMonitor media, LyricsSer
     if (m is null || m.Title.Length == 0) return Results.Json(new { playing = false });
     var key = LyricsService.KeyOf(m.Title, m.Artist);
     if (lyrics.LastKey != key) { lyrics.LastKey = key; spotify.ForgetSnapshot(); }
-    var artistImage = m.App == "Spotify" ? await spotify.PlayingArtistImage(m.Title, ct) : null;
+    // Spotify's artist photo and queue are asked in parallel and waited for only briefly: a new song is answered at once,
+    // and the photo and queue follow on the next call ("artistPending")
+    string? artistImage = null;
+    var artistPending = false;
     object[]? queue = null;
     if (m.App == "Spotify")
     {
-        var snap = await spotify.Snapshot(ct);
-        queue = (snap["queue"] as System.Text.Json.Nodes.JsonArray ?? []).Take(4)
-            .Select(q => (object)new { id = q?["id"]?.GetValue<string>(), name = q?["name"]?.GetValue<string>(), artist = q?["artist"]?.GetValue<string>() })
+        var imgTask = spotify.PlayingArtistImage(m.Title, ct);
+        var snapTask = spotify.Snapshot(ct);
+        await Task.WhenAny(Task.WhenAll(imgTask, snapTask), Task.Delay(250, ct));
+        if (imgTask.IsCompletedSuccessfully) artistImage = imgTask.Result; else artistPending = true;
+        var snap = snapTask.IsCompletedSuccessfully ? snapTask.Result : new System.Text.Json.Nodes.JsonObject();
+        var next = (snap["queue"] as System.Text.Json.Nodes.JsonArray ?? []).Take(4)
+            .Select(q => (Id: q?["id"]?.GetValue<string>(), Name: q?["name"]?.GetValue<string>() ?? "", Artist: q?["artist"]?.GetValue<string>() ?? ""))
             .ToArray();
+        queue = next.Select(q => (object)new { id = q.Id, name = q.Name, artist = q.Artist }).ToArray();
+        // the next two songs' lyrics and translation are fetched now, so a skip shows them at once
+        foreach (var q in next.Take(2).Where(q => q.Name.Length > 0)) _ = lyrics.GetAsync(q.Name, q.Artist, "", 0);
     }
     // a new song answers at once (title, time, queue); its lyrics and translation follow on a later call ("pending")
     object? words = null;
@@ -877,7 +887,11 @@ app.MapGet("/api/lyrics/now", async (string? have, MediaMonitor media, LyricsSer
         }
         else pending = true;
     }
-    return Results.Json(new { playing = true, key, media = m, artistImage, queue, lyrics = words, pending });
+    // Windows reports some players' position late: the lyrics are timed by the player's own clock where we have it
+    long? sample = null;
+    if (m.App == "Spotify" && m.Playing && spotify.ProgressNow(m.Title) is { } sp) sample = sp - (m.PosMs + m.AgeMs);
+    var posOffsetMs = m.App == "Spotify" ? lyrics.Offset(key, sample) : 0;
+    return Results.Json(new { playing = true, key, media = m, artistImage, artistPending, queue, lyrics = words, pending, posOffsetMs });
 });
 
 app.MapGet("/api/art", (MediaMonitor media) =>

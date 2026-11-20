@@ -140,9 +140,11 @@ W.lyrics = {
     applyTr();
     trBtn.onclick = () => { haptic(); showTr = !showTr; applyTr(); try { localStorage.setItem('federano.lyricsTr', showTr ? '1' : '0'); } catch (_) {} active = -2; draw(); };
 
-    let follow = false, alive = true, key = '', pendingKey = '', lines = [], active = -2, m = null, at = 0, artId = -1, timer = 0;
+    let lastArtistPending = false, follow = false, alive = true, key = '', pendingKey = '', lines = [], active = -2, m = null, at = 0, artId = -1, timer = 0;
     const visible = () => pages[curPage] === page && !document.body.classList.contains('night');
-    const pos = () => !m ? 0 : Math.min(m.durMs || Infinity, m.posMs + (m.ageMs || 0) + (m.playing ? performance.now() - at : 0));
+    // offset: how far Windows' position runs behind the player's own clock (the agent measures it for Spotify)
+    let offset = 0;
+    const pos = () => !m ? 0 : Math.min(m.durMs || Infinity, m.posMs + (m.ageMs || 0) + (m.playing ? performance.now() - at + offset : 0));
 
     // ---- controls: the PC's player through the media API (same as the media widget and the mirror)
     let holdUntil = 0;
@@ -267,12 +269,14 @@ W.lyrics = {
           } else {
             box.classList.remove('ly-idle');
             m = j.media; at = performance.now();
+            offset = Number(j.posOffsetMs) || 0;
+            lastArtistPending = !!j.artistPending;
             title.textContent = m.title; artist.textContent = [m.artist, m.album].filter(Boolean).join(' · ');
             if (m.app === 'Spotify') fillQueue(j.queue, m.title); else { lastQueue = []; fillQueue([]); }
             chip.textContent = `● ${m.app || 'PC'} · ${m.playing ? 'tocando' : 'pausado'}`;
             total.textContent = m.durMs > 0 ? clock(m.durMs) : '';
             showPlay();
-            setArt(j.artistImage || (m.artId ? `${API}/art?v=${m.artId}` : ''), !!j.artistImage);
+            if (!j.artistPending) setArt(j.artistImage || (m.artId ? `${API}/art?v=${m.artId}` : ''), !!j.artistImage);
             tint();
             if (j.key !== key) {
               if (j.lyrics) { key = j.key; pendingKey = ''; fillLines(j.lyrics); }
@@ -286,7 +290,7 @@ W.lyrics = {
           }
         } catch (_) {}
       }
-      timer = setTimeout(poll, pendingKey ? 400 : visible() ? 4000 : 8000);
+      timer = setTimeout(poll, pendingKey || lastArtistPending ? 400 : visible() ? 4000 : 8000);
     }
     // the shared media state streamed by the agent (pokes on every change): title, play/pause and position follow it at
     // once; a new song asks for its lyrics right away instead of waiting for the next poll
@@ -302,7 +306,7 @@ W.lyrics = {
       if (s.title !== m.title || s.app !== m.app) return;
       if (Date.now() < holdUntil) return;   // a control just used: its own answer is newer
       const p = s.posMs + (s.playing ? performance.now() - s.at : 0);
-      if (s.playing !== m.playing || Math.abs(p - pos()) > 700) {
+      if (s.playing !== m.playing || Math.abs(p + (s.playing ? offset : 0) - pos()) > 700) {
         m = { ...m, playing: s.playing, posMs: p, ageMs: 0, durMs: s.durMs || m.durMs }; at = performance.now();
         showPlay(); active = -2;
       }
