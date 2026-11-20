@@ -854,6 +854,14 @@ app.MapGet("/api/lyrics/now", async (string? have, MediaMonitor media, LyricsSer
     var m = media.Snapshot();
     if (m is null || m.Title.Length == 0) return Results.Json(new { playing = false });
     var key = LyricsService.KeyOf(m.Title, m.Artist);
+    // Federano: a podcast episode playing on Spotify gets its own screen (no lyrics to look for)
+    if (m.App == "Spotify")
+    {
+        await Task.WhenAny(spotify.PlayingArtistImage(m.Title, ct), Task.Delay(250, ct));
+        if (spotify.NowEpisode is { } ep && string.Equals(ep.Name, m.Title, StringComparison.OrdinalIgnoreCase))
+            return Results.Json(new { playing = true, key, kind = "episode", media = m, episode = ep,
+                lyrics = new { lines = Array.Empty<object>(), plain = "", instrumental = false, found = false }, pending = false, posOffsetMs = 0 });
+    }
     if (lyrics.LastKey != key) { lyrics.LastKey = key; spotify.ForgetSnapshot(); }
     // Spotify's artist photo and queue are asked in parallel and waited for only briefly: a new song is answered at once,
     // and the photo and queue follow on the next call ("artistPending")
@@ -891,7 +899,7 @@ app.MapGet("/api/lyrics/now", async (string? have, MediaMonitor media, LyricsSer
     long? sample = null;
     if (m.App == "Spotify" && m.Playing && spotify.ProgressNow(m.Title) is { } sp) sample = sp - (m.PosMs + m.AgeMs);
     var posOffsetMs = m.App == "Spotify" ? lyrics.Offset(key, sample) : 0;
-    return Results.Json(new { playing = true, key, media = m, artistImage, artistPending, queue, lyrics = words, pending, posOffsetMs });
+    return Results.Json(new { playing = true, key, kind = "track", media = m, artistImage, artistPending, queue, lyrics = words, pending, posOffsetMs });
 });
 
 app.MapGet("/api/art", (MediaMonitor media) =>

@@ -284,6 +284,10 @@ public sealed class SpotifyControl : IDisposable
     /// Spotify is asked at most every 5 s; the photo of each artist once.</summary>
     private (long Ms, long At, string Track)? _progress;
 
+    /// <summary>Federano: what Spotify is playing when it is a podcast episode (null for a song), read with the artist photo.</summary>
+    public sealed record Episode(string Name, string Show, string Publisher, string Description, string Date, string? Image, long DurationMs);
+    public Episode? NowEpisode { get; private set; }
+
     /// <summary>Spotify's own position of the playing song now (counted on from its last reading, up to 15 s old).</summary>
     public long? ProgressNow(string title)
     {
@@ -300,13 +304,27 @@ public sealed class SpotifyControl : IDisposable
         try
         {
             var t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-            var playing = await Request(HttpMethod.Get, "me/player/currently-playing", null, ct);
+            // episodes too: without additional_types a podcast comes back without its item
+            var playing = await Request(HttpMethod.Get, "me/player/currently-playing?additional_types=track,episode", null, ct);
+            NowEpisode = null;
+            if (playing?["currently_playing_type"]?.GetValue<string>() == "episode" && playing?["item"] is { } ep)
+            {
+                var cover = (ep["images"] as JsonArray ?? [])
+                    .Select(i => (Url: i?["url"]?.GetValue<string>(), W: i?["width"]?.GetValue<int?>() ?? 0))
+                    .Where(i => CoverUrl(i.Url)).OrderByDescending(i => i.W).Select(i => i.Url).FirstOrDefault();
+                var desc = ep["description"]?.GetValue<string>() ?? "";
+                if (desc.Length > 600) desc = desc[..600].TrimEnd() + "…";
+                NowEpisode = new(ep["name"]?.GetValue<string>() ?? title, ep["show"]?["name"]?.GetValue<string>() ?? "",
+                    ep["show"]?["publisher"]?.GetValue<string>() ?? "", desc, ep["release_date"]?.GetValue<string>() ?? "", cover,
+                    ep["duration_ms"]?.GetValue<long>() ?? 0);
+                image = cover;
+            }
             // Spotify's own position, read at about the middle of the request (Windows reports Spotify ~0.5 s late)
             if (playing?["progress_ms"]?.GetValue<long>() is { } progress && playing?["is_playing"]?.GetValue<bool>() == true)
                 _progress = (progress, t0 + (System.Diagnostics.Stopwatch.GetTimestamp() - t0) / 2, playing?["item"]?["name"]?.GetValue<string>() ?? "");
             else _progress = null;
             var item = playing?["item"];
-            var id = (item?["artists"] as JsonArray)?.FirstOrDefault()?["id"]?.GetValue<string>();
+            var id = NowEpisode is null ? (item?["artists"] as JsonArray)?.FirstOrDefault()?["id"]?.GetValue<string>() : null;
             if (id is { Length: > 0 } && System.Text.RegularExpressions.Regex.IsMatch(id, "^[A-Za-z0-9]{22}$"))
             {
                 if (!_artistImages.TryGetValue(id, out image))
