@@ -73,6 +73,7 @@ builder.Services.AddSingleton<SpectrumAnalyzer>();
 AddMonitor<SystemMonitor>(builder.Services);
 AddMonitor<MediaMonitor>(builder.Services);
 builder.Services.AddSingleton<SkillEngine>();
+builder.Services.AddSingleton<LyricsService>();
 builder.Services.AddSingleton<YouTubeTracker>();
 builder.Services.AddSingleton<MirrorCapture>();
 builder.Services.AddSingleton<MirrorOffers>();
@@ -844,6 +845,23 @@ app.MapGet("/api/mirror/frame", async (long? after, HttpResponse res, MirrorCapt
     res.Headers["X-Seq"] = frame.Seq.ToString(System.Globalization.CultureInfo.InvariantCulture);
     res.Headers.CacheControl = "no-store";
     return Results.Bytes(frame.Jpeg, "image/jpeg");
+});
+
+// Federano "Letra" page: what is playing, the artist's photo (Spotify) and the timed lyrics (LRCLIB). The lyrics are left
+// out when the panel already has them ("have" = the song's key).
+app.MapGet("/api/lyrics/now", async (string? have, MediaMonitor media, LyricsService lyrics, SpotifyControl spotify, CancellationToken ct) =>
+{
+    var m = media.Snapshot();
+    if (m is null || m.Title.Length == 0) return Results.Json(new { playing = false });
+    var key = LyricsService.KeyOf(m.Title, m.Artist);
+    var artistImage = m.App == "Spotify" ? await spotify.PlayingArtistImage(m.Title, ct) : null;
+    object? words = null;
+    if (have != key)
+    {
+        var r = await lyrics.GetAsync(m.Title, m.Artist, m.Album, m.DurMs);
+        words = new { lines = r.Lines.Select(l => new { t = l.T, text = l.Text }), plain = r.Plain, instrumental = r.Instrumental, found = r.Found };
+    }
+    return Results.Json(new { playing = true, key, media = m, artistImage, lyrics = words });
 });
 
 app.MapGet("/api/art", (MediaMonitor media) =>

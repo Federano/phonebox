@@ -158,3 +158,40 @@ public class SpotifyVoiceTests
     public void ParsesKindAndWhat(string query, string kind, string what) =>
         Assert.Equal((kind, what), SkillEngine.ParseMusic(query));
 }
+
+public class LyricsTests
+{
+    [Fact]
+    public void ParsesTimedLinesInOrder()
+    {
+        var lines = LyricsService.ParseLrc("[ar: Oliver Tree]\n[00:12.50] On, and on\n[00:10.00] Babe\n[01:02.03][01:30.00] I'm a lover\n[00:20.00]\nno stamp");
+        Assert.Equal([10_000L, 12_500L, 20_000L, 62_030L, 90_000L], lines.Select(l => l.T));
+        Assert.Equal("Babe", lines[0].Text);
+        Assert.Equal("", lines[2].Text);   // an instrumental gap
+        Assert.Equal("I'm a lover", lines[4].Text);
+    }
+
+    [Fact]
+    public void KeyIgnoresCaseAndSpaces() => Assert.Equal(LyricsService.KeyOf(" Life Goes On ", "Oliver Tree"), LyricsService.KeyOf("life goes on", "OLIVER TREE"));
+}
+
+public class ShowLyricsSkillTests
+{
+    static readonly IReadOnlyList<SkillDef> Shipped = Directory
+        .EnumerateFiles(Path.Combine(AppContext.BaseDirectory, "skills"), "*.json")
+        .Select(f => System.Text.Json.JsonSerializer.Deserialize<SkillDef>(File.ReadAllText(f), new System.Text.Json.JsonSerializerOptions
+            { PropertyNameCaseInsensitive = true, ReadCommentHandling = System.Text.Json.JsonCommentHandling.Skip, AllowTrailingCommas = true })!
+            with { Id = Path.GetFileNameWithoutExtension(f) })
+        .ToList();
+
+    [Theory]
+    [InlineData("Federano, mostra a letra")]
+    [InlineData("qual a letra dessa música")]
+    public void OpensTheLyricsPage(string said)
+    {
+        var s = SkillEngine.Match(Shipped, said);
+        Assert.Equal("mostrar-letra", s?.Id);
+        Assert.Equal("panel.page", s?.Action);
+        Assert.Equal("lyrics", s?.Page);
+    }
+}

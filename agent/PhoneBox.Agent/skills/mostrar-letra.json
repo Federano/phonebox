@@ -1,0 +1,8 @@
+{
+  // Federano: "mostra a letra" abre no tablet a página com a letra da música tocando no PC
+  "name": "Mostrar a letra",
+  "triggers": ["mostra a letra", "mostrar a letra", "abre a letra", "letra da musica", "qual a letra", "mostra a letra da musica", "letra"],
+  "action": "panel.page",
+  "page": "lyrics",
+  "reply": "Mostrando a letra."
+}

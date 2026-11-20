@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
@@ -274,6 +275,42 @@ public sealed class SpotifyControl : IDisposable
         { return new(false, ex is IOException ? ex.Message : "Spotify is unavailable"); }
     }
     private string DeviceQuery() => _config.Get().Controls.SpotifyDevice is { Length: > 0 } id ? "?device_id=" + Uri.EscapeDataString(id) : "";
+
+    // ---- Federano "Letra" page: the playing artist's photo (Spotify's image server), looked up once per artist
+    private readonly ConcurrentDictionary<string, string?> _artistImages = new();
+    private (long At, string? Track, string? Image) _nowArtist;
+
+    /// <summary>The photo of the artist of the track Spotify is playing now (null when not connected or unknown).
+    /// Spotify is asked at most every 5 s; the photo of each artist once.</summary>
+    public async Task<string?> PlayingArtistImage(string title, CancellationToken ct)
+    {
+        var cached = _nowArtist;
+        if (Now - cached.At < 5000 && string.Equals(cached.Track, title, StringComparison.OrdinalIgnoreCase)) return cached.Image;
+        string? image = null;
+        try
+        {
+            var playing = await Request(HttpMethod.Get, "me/player/currently-playing", null, ct);
+            var item = playing?["item"];
+            var id = (item?["artists"] as JsonArray)?.FirstOrDefault()?["id"]?.GetValue<string>();
+            if (id is { Length: > 0 } && System.Text.RegularExpressions.Regex.IsMatch(id, "^[A-Za-z0-9]{22}$"))
+            {
+                if (!_artistImages.TryGetValue(id, out image))
+                {
+                    var artist = await Request(HttpMethod.Get, "artists/" + id, null, ct);
+                    image = (artist?["images"] as JsonArray ?? [])
+                        .Select(i => (Url: i?["url"]?.GetValue<string>(), W: i?["width"]?.GetValue<int?>() ?? 0))
+                        .Where(i => CoverUrl(i.Url)).OrderByDescending(i => i.W).Select(i => i.Url).FirstOrDefault();
+                    if (_artistImages.Count > 200) _artistImages.Clear();
+                    _artistImages[id] = image;
+                }
+            }
+            title = item?["name"]?.GetValue<string>() ?? title;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex) when (ex is IOException or HttpRequestException or JsonException or OperationCanceledException or InvalidOperationException) { image = null; }
+        _nowArtist = (Now, title, image);
+        return image;
+    }
 
     public sealed record PlayResult(bool Ok, string Message, string Title = "", string Artist = "");
 

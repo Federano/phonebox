@@ -1,4 +1,4 @@
-import { API, PANEL_HEADERS, bridge, curPage, h, haptic, icon, pages, toast } from '../main.js';
+import { API, PANEL_HEADERS, bridge, curPage, gotoSkillPage, h, haptic, icon, pages, toast } from '../main.js';
 import { W } from '../registry.js';
 import { openMirror } from '../mirror.js';
 
@@ -53,6 +53,7 @@ W.federano = {
         const j = await r.json();
         if (alive) { reply.textContent = j.reply || '—'; box.classList.toggle('miss', !j.skill); }
         if (j.mirror) openMirror(j.reply);
+        if (j.page && gotoSkillPage(j.page) < 0 && alive) reply.textContent += ' (Crie uma página com o widget Letra.)';
         if (j.open) {
           if (bridge && bridge.openVideo) bridge.openVideo(j.open);
           else if (alive) reply.textContent += ' (Atualize o app Federano para abrir o vídeo.)';

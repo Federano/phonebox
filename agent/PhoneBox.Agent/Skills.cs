@@ -15,7 +15,7 @@ public sealed record SkillDef
     public string[] Triggers { get; init; } = [];
     /// <summary>Built-in action: media.now, media.playpause, media.play, media.pause, media.next, media.prev,
     /// media.seek (by <see cref="Seconds"/>), volume.up, volume.down (by <see cref="Step"/>), volume.mute,
-    /// video.mirror, video.toTablet, reply.</summary>
+    /// video.mirror, video.toTablet, panel.page (by <see cref="Page"/>), reply.</summary>
     public string Action { get; init; } = "reply";
     /// <summary>media.seek: how far to jump; negative goes back (e.g. -10).</summary>
     public int Seconds { get; init; }
@@ -24,6 +24,8 @@ public sealed record SkillDef
     /// <summary>True: a trigger is the start of what was said and the rest is what to look for, e.g. "toca" +
     /// "evidências de chitãozinho e xororó" (spotify.play). Said alone, the trigger is left to the other skills.</summary>
     public bool Query { get; init; }
+    /// <summary>panel.page: the page the tablet shows (its id or title; "lyrics" = the page with the lyrics widget).</summary>
+    public string Page { get; init; } = "";
     /// <summary>Answer; {title}, {artist}, {album}, {app}, {state} are filled from the media playing on the PC
     /// ({volume} after a volume action).</summary>
     public string Reply { get; init; } = "";
@@ -34,7 +36,8 @@ public sealed record SkillDef
 
 /// <param name="Open">A link the tablet opens (e.g. the YouTube video taken from the PC).</param>
 /// <param name="Mirror">True: the tablet shows the PC's video live (GET /api/mirror/frame).</param>
-public sealed record SkillResult(bool Ok, string? Skill, string Reply, string? Open = null, bool Mirror = false);
+/// <param name="Page">A page the tablet switches to (id or title; "lyrics" = the page with the lyrics widget).</param>
+public sealed record SkillResult(bool Ok, string? Skill, string Reply, string? Open = null, bool Mirror = false, string? Page = null);
 
 public sealed class SkillEngine(ILogger<SkillEngine> log, MediaMonitor media, YouTubeTracker youtube, MirrorCapture mirror, AudioControl audio,
     SpotifyControl spotify)
@@ -117,6 +120,8 @@ public sealed class SkillEngine(ILogger<SkillEngine> log, MediaMonitor media, Yo
                 var answer = skill.Reply.Length > 0 ? Fill(skill.Reply, vals) : a.Muted ? "PC no mudo." : $"Volume do PC em {a.Volume}%.";
                 return new(true, skill.Id, answer);
             }
+            case "panel.page":
+                return new(true, skill.Id, skill.Reply.Length > 0 ? skill.Reply : "Pronto.", Page: skill.Page.Length > 0 ? skill.Page : null);
             case "video.toTablet":
                 return ToTablet(skill, youtube);
             case "video.mirror":

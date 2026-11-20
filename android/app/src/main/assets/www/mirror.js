@@ -1,4 +1,4 @@
-import { API, PANEL_HEADERS, bridge, haptic, toast } from './main.js';
+import { API, PANEL_HEADERS, bridge, gotoSkillPage, haptic, toast } from './main.js';
 
 // ---------------------------------------------------------------- Federano mirroring
 // Full-screen view of the PC's video, live. The agent captures the player's window (cropped to the video in a browser)
@@ -315,6 +315,7 @@ export function openMirror(title) {
         const j = await r.json();
         say(j.reply || '—');
         if (j.open && bridge && bridge.openVideo) bridge.openVideo(j.open);
+        if (j.page && gotoSkillPage(j.page) >= 0) minimize();
         refresh();
       } catch (_) { say('Não consegui falar com o PC.'); }
     }

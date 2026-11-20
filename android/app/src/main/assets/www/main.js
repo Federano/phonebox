@@ -15,6 +15,7 @@ import './widgets/controls.js';
 import './widgets/console.js';
 import './widgets/dictate.js';
 import './widgets/federano.js';
+import './widgets/lyrics.js';
 import './mirror.js';
 import { nightCity, ncPage } from './nightcity.js';
 import './widgets/camera.js';
@@ -1205,7 +1206,7 @@ export function handleEvent(e) {
   else if (e.kind === 'reload') location.reload();
 }
 
-export const WIDGET_ICONS = { federano: '🤖', camera: '📹', dictate: '🎙️', spectrum: '📶', 'app-console': '🎛️',discord: '💬', rules: '⚡', chargecare: '🔋', nextup: '⏭️', moon: '🌙', wordclock: '🔤', clock: '🕒', weather: '⛅', forecast: '🌦️', media: '🎵', stat: '📈', gauge: '⏲️', chart: '📊', meters: '💾', gpu: '🎮', quotas: '✳️', sessions: '🤖',
+export const WIDGET_ICONS = { federano: '🤖', lyrics: '🎤', camera: '📹', dictate: '🎙️', spectrum: '📶', 'app-console': '🎛️',discord: '💬', rules: '⚡', chargecare: '🔋', nextup: '⏭️', moon: '🌙', wordclock: '🔤', clock: '🕒', weather: '⛅', forecast: '🌦️', media: '🎵', stat: '📈', gauge: '⏲️', chart: '📊', meters: '💾', gpu: '🎮', quotas: '✳️', sessions: '🤖',
   github: '🐙', processes: '⚙️', shortcuts: '🎛️', button: '🔘', worldclock: '🌍', calendar: '📅', pomodoro: '🍅', countdown: '⏳', note: '📝', command: '💻',
   push: '📡', inbox: '📬', label: '🔤', analog: '🕰️', progress: '📆', stopwatch: '⏱️', timer: '⏲️', counter: '🔢', breathe: '🫁', quote: '💬',
   checklist: '✅', battery: '🔋', topprocs: '🔥', quotaring: '🎯', volume: '🔊', sun: '🌅', air: '🍃', hackernews: '📰', feeds: '🗞️', photos: '🖼️', exchange: '💱', crypto: '🪙', image: '🖼️', pcswitch: '🖥️' };
@@ -1423,6 +1424,15 @@ export function goPage(i, instant = false) {
   onScroll();
   clearTimeout(snapTimer);
   snapTimer = setTimeout(() => (pager.style.scrollSnapType = ''), 120);
+}
+
+/** Federano voice: a page by id or title; "lyrics" = the first page with the lyrics widget. */
+export function gotoSkillPage(ref) {
+  if (ref === 'lyrics') {
+    const n = pages.findIndex((p) => (p.widgets || []).some((w) => w.type === 'lyrics' || (w.type === 'stack' && JSON.stringify(w.options || {}).includes('"lyrics"'))));
+    if (n >= 0) { lastTouch = Date.now(); goPage(n, Math.abs(n - curPage) > 1); return n; }
+  }
+  return gotoPageRef(ref);
 }
 
 export function gotoPageRef(ref) {
