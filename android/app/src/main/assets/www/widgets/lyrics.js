@@ -18,7 +18,14 @@ const LEAD = 350;   // show a line a little before it is sung
 function weave(g, W, H, st, cols) {
   g.clearRect(0, 0, W, H);
   const n = 22, s = W / 660, ph = st.ph, t = st.now / 1000;
-  const rgb = cols.map((c) => c.split(',').map(Number));
+  // a new song's colours fade in over a second instead of switching at once
+  const mixK = Math.min(1, (st.now - (st.colsAt || 0)) / 1000);
+  const rgb = cols.map((c, i) => {
+    const to = c.split(',').map(Number), from = (st.prevCols && st.prevCols[i] ? st.prevCols[i] : c).split(',').map(Number);
+    return to.map((v, j) => from[j] + (v - from[j]) * mixK);
+  });
+  // energy: louder parts (a chorus) move more, calm parts slow down
+  const en = st.energy ?? 1;
   const waveT = (st.now - st.waveAt) / 1000, waveR = waveT * 520 * s;
   for (let k = 0; k < n; k++) {
     const f = k / (n - 1);                       // 0 = top line, 1 = bottom line
@@ -30,7 +37,7 @@ function weave(g, W, H, st, cols) {
     const col = c0.map((v, i) => Math.round(v + (c1[i] - v) * fr)).join(',');
     // the bottom lines follow the bass, the middle ones the voice, the top ones the highs
     const lvl = (f > .6 ? st.bass : f < .35 ? st.high : st.mid) * 1.3;
-    const amp = ((6 + 34 * lvl * st.act) * depth) + 4;
+    const amp = ((6 + 34 * lvl * st.act * en) * depth) + 4;
     const sp = depth;
     g.beginPath();
     for (let x = 0; x <= W; x += 6 * s) {
@@ -47,6 +54,17 @@ function weave(g, W, H, st, cols) {
     g.stroke();
   }
   g.shadowBlur = 0;
+  // light particles drifting up between the lines, brighter on the beat
+  if (!st.parts) st.parts = Array.from({ length: 46 }, () => ({ x: Math.random(), y: Math.random(), r: 1.5 + Math.random() * 5, v: .02 + Math.random() * .05, c: Math.floor(Math.random() * 4), ph: Math.random() * 6 }));
+  const dt = Math.min(.05, (st.now - (st.partsAt || st.now)) / 1000); st.partsAt = st.now;
+  for (const q of st.parts) {
+    q.y -= q.v * dt * (.3 + .7 * st.act); q.x += Math.sin(t * .6 + q.ph) * .0004;
+    if (q.y < -.05) { q.y = 1.05; q.x = Math.random(); }
+    const c = rgb[q.c % rgb.length].map(Math.round).join(','), a = (.1 + .25 * st.pulse + .08 * Math.sin(t * 1.5 + q.ph)) * (.4 + .6 * st.act);
+    const x = q.x * W, y = q.y * H, r = q.r * s * 2.4;
+    const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, `rgba(${c},${Math.max(0, a).toFixed(3)})`); gr.addColorStop(1, `rgba(${c},0)`);
+    g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+  }
 }
 /** The cover's own colours: its pixels grouped by hue, the four strongest groups (vivid and common first), each
  * brightened enough to show on a dark background. Greys and near-black are left out unless the cover has nothing else. */
@@ -117,11 +135,11 @@ W.lyrics = {
     const qHead = h('div', 'ly-qh', 'A seguir'), queue = h('div', 'ly-queue');
     const bgPhoto = h('img', 'ly-bgphoto'); bgPhoto.alt = '';
     const fx = h('canvas', 'ly-fx');
-    const fxs = { bass: .3, mid: .3, high: .3, avgBass: .3, pulse: 0, lastBeat: 0, act: 1, ph: 0, lastMs: 0, now: 0, waveAt: -1e9 };
+    const fxs = { bass: .3, mid: .3, high: .3, avgBass: .3, pulse: 0, lastBeat: 0, act: 1, ph: 0, lastMs: 0, now: 0, waveAt: -1e9, short: .3, long: .3, energy: 1, prevCols: null, colsAt: 0 };
     let cols = ['150,120,220', '120,90,200', '200,120,180', '90,140,220'], lastWant = 0, raf = 0, lastFrame = 0;
     function animate(ms) {
       raf = requestAnimationFrame(animate);
-      if (!visible() || ms - lastFrame < 33) return;
+      if (!visible() || ms - lastFrame < 15) return;   // the tablet is always plugged in: up to 60 fps
       lastFrame = ms;
       const w = Math.round(fx.clientWidth), hgt = Math.round(fx.clientHeight);
       if (!w || !hgt) return;
@@ -135,14 +153,28 @@ W.lyrics = {
       fxs.avgBass += (nb - fxs.avgBass) * .03;
       if (playing && bands && nb > fxs.avgBass * 1.35 + .08 && ms - fxs.lastBeat > 280) { fxs.pulse = 1; fxs.lastBeat = ms; }
       fxs.pulse *= .88;
-      fxs.act += ((playing ? 1 : .06) - fxs.act) * .05;
+      // the last seconds of a song: the lines slow down and fade with the sound
+      const left = m && m.durMs > 0 ? m.durMs - pos() : Infinity;
+      const ending = playing && left < 8000 ? Math.max(.08, left / 8000) : 1;
+      fxs.act += ((playing ? ending : .06) - fxs.act) * .05;
+      // energy: the last ~3 s of sound against the last ~30 s (a chorus is louder than the verse)
+      const loud = (nb + nm + nh) / 3;
+      fxs.short += (loud - fxs.short) * .02; fxs.long += (loud - fxs.long) * .002;
+      fxs.energy = Math.max(.6, Math.min(1.6, fxs.long > .02 ? fxs.short / fxs.long : 1));
+      // the line being sung breathes with the beat, and fills with colour as it is sung (karaoke)
+      box.style.setProperty('--ly-beat', fxs.pulse.toFixed(3));
+      if (lines.length && active >= 0 && lines[active]) {
+        const t0 = lines[active].t, t1 = lines[active + 1] ? lines[active + 1].t : t0 + 4000;
+        const k = Math.max(0, Math.min(1, (pos() + LEAD - t0) / Math.max(400, t1 - t0)));
+        lines[active].el.style.setProperty('--ly-fill', (k * 100).toFixed(1) + '%');
+      }
       fxs.ph += (ms - (fxs.lastMs || ms)) / 1000 * (.5 + .7 * fxs.act);
       fxs.lastMs = ms;
       fxs.now = ms;
       weave(fx.getContext('2d'), w, hgt, fxs, cols);
       // the blurred photo breathes (slow zoom) and lights up a little on the beat; dimmer when paused
       bgPhoto.style.transform = `scale(${(1 + .04 * Math.sin(ms / 4000)).toFixed(4)})`;
-      bgPhoto.style.filter = `blur(24px) brightness(${((.48 + .12 * fxs.pulse) * (playing ? 1 : .8)).toFixed(3)}) saturate(1.2)`;
+      bgPhoto.style.filter = `blur(24px) brightness(${((.44 + .06 * fxs.energy + .12 * fxs.pulse) * (playing ? 1 : .8)).toFixed(3)}) saturate(1.2)`;
       // keep the agent's analyser running while this page shows (it stops a few seconds after the last ask)
       if (Date.now() - lastWant > 2000) {
         lastWant = Date.now();
@@ -239,7 +271,13 @@ W.lyrics = {
       img.dataset.src = src || '';
       box.classList.toggle('ly-noart', !src);
       box.classList.toggle('ly-artist-photo', !!isArtist);
-      for (const el of [img, bgPhoto]) { if (src) el.src = src; else el.removeAttribute('src'); }
+      // the new photo fades in (the old one fades out first)
+      bgPhoto.style.opacity = '0'; img.style.opacity = '0';
+      setTimeout(() => {
+        for (const el of [img, bgPhoto]) { if (src) el.src = src; else el.removeAttribute('src'); }
+        const show = () => { bgPhoto.style.opacity = ''; img.style.opacity = ''; };
+        if (src) { img.onload = show; setTimeout(show, 1200); } else show();
+      }, 350);
     }
     function tint() {
       // the background takes the cover's colour (same-origin /api/art, so it can be read)
@@ -250,6 +288,7 @@ W.lyrics = {
         // the whole page takes the cover's colours: background, card, lines, bar, buttons, labels
         let pal;
         try { pal = coverPalette(probe); } catch (_) { return; }
+        fxs.prevCols = cols; fxs.colsAt = performance.now();
         cols = pal.map((c) => c.join(','));
         const [a, b2] = pal, dark = (c, k) => `rgb(${c.map((v) => Math.round(v * k)).join(',')})`;
         box.style.setProperty('--ly-bg', dark(a, .34));
@@ -266,7 +305,7 @@ W.lyrics = {
       note.textContent = '';
       const tr = Array.isArray(data?.trans) ? data.trans : null;
       trBtn.hidden = !tr;
-      const line = (text, i, cls) => { const el = h('div', 'ly-line' + (cls || ''), text); if (tr && tr[i]) el.append(h('span', 'ly-tl', tr[i])); return el; };
+      const line = (text, i, cls) => { const el = h('div', 'ly-line' + (cls || ''), h('span', 'ly-txt', text)); if (tr && tr[i]) el.append(h('span', 'ly-tl', tr[i])); return el; };
       if (!data || !data.found || data.instrumental || (!data.lines?.length && !data.plain)) {
         box.classList.add('ly-none');
         note.textContent = data?.instrumental ? 'Instrumental' : 'Letra não encontrada para esta música.';

@@ -1488,3 +1488,10 @@ body.controls-top .ap-foot { order: -1; margin-bottom: 4px; }
 .w.ly.ly-fs .ly-card { display: none; }
 .w.ly.ly-fs .ly-lines { padding: 0 clamp(24px, 8cqw, 120px); }
 .w.ly.ly-fs .ly-line { font-size: clamp(24px, 9cqmin, 64px); max-width: 28ch; }
+/* lyrics page: the line being sung breathes with the beat and fills with colour as it is sung (karaoke);
+   photos fade between songs */
+.ly-photo, .ly-bgphoto { transition: opacity .35s ease; }
+.ly-line.on { transform: scale(calc(1.04 + .035 * var(--ly-beat, 0))); transition: color .35s, transform .12s; }
+.ly-line.on .ly-txt { background: linear-gradient(90deg, #fff var(--ly-fill, 0%), rgba(255, 255, 255, .5) var(--ly-fill, 0%));
+  -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none; }
+.w.ly.ly-paused .ly-line.on .ly-txt { background: none; color: rgba(255, 255, 255, .7); -webkit-background-clip: border-box; }
