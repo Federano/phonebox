@@ -274,5 +274,49 @@ public sealed class SpotifyControl : IDisposable
         { return new(false, ex is IOException ? ex.Message : "Spotify is unavailable"); }
     }
     private string DeviceQuery() => _config.Get().Controls.SpotifyDevice is { Length: > 0 } id ? "?device_id=" + Uri.EscapeDataString(id) : "";
+
+    public sealed record PlayResult(bool Ok, string Message, string Title = "", string Artist = "");
+
+    /// <summary>
+    /// Federano voice: looks up <paramref name="query"/> (kind track, album, playlist or artist) and plays the first
+    /// result. With no active player it starts on this computer's Spotify app (or the first device Spotify knows).
+    /// Answers in Portuguese.
+    /// </summary>
+    public async Task<PlayResult> PlaySearch(string query, string kind, CancellationToken ct)
+    {
+        if (kind is not ("track" or "album" or "playlist" or "artist")) kind = "track";
+        try
+        {
+            var found = await Request(HttpMethod.Get,
+                $"search?type={kind}&limit=5&market=from_token&q={Uri.EscapeDataString(query)}", null, ct);
+            var item = (found?[kind + "s"]?["items"] as JsonArray)?.FirstOrDefault(i => i?["uri"] is not null);
+            if (item is null) return new(false, $"Não achei \"{query}\" no Spotify.");
+            var uri = item["uri"]!.GetValue<string>();
+            var title = item["name"]?.GetValue<string>() ?? query;
+            var artist = item["artists"] is JsonArray artists
+                ? string.Join(", ", artists.Select(a => a?["name"]?.GetValue<string>() ?? "").Where(n => n.Length > 0))
+                : item["owner"]?["display_name"]?.GetValue<string>() ?? "";
+            JsonObject Body() => kind == "track" ? new() { ["uris"] = new JsonArray(uri) } : new() { ["context_uri"] = uri };
+            try { await Request(HttpMethod.Put, "me/player/play" + DeviceQuery(), Body(), ct); }
+            catch (IOException ex) when (ex.Message.Contains("HTTP 404"))
+            {
+                // no active player: wake up one Spotify knows, this computer first
+                var devices = (await Request(HttpMethod.Get, "me/player/devices", null, ct))?["devices"] as JsonArray ?? [];
+                var device = devices.FirstOrDefault(d => d?["type"]?.GetValue<string>() == "Computer") ?? devices.FirstOrDefault();
+                if (device?["id"]?.GetValue<string>() is not { Length: > 0 } id)
+                    return new(false, "O Spotify não está aberto em nenhum aparelho. Abra o Spotify no PC e peça de novo.");
+                await Request(HttpMethod.Put, "me/player/play?device_id=" + Uri.EscapeDataString(id), Body(), ct);
+            }
+            _snapshot = null;
+            return new(true, "", title, artist);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (IOException ex) when (ex.Message.Contains("HTTP 403"))
+        { return new(false, "O Spotify recusou: mandar tocar só funciona com Spotify Premium."); }
+        catch (IOException ex) when (ex.Message.StartsWith("Connect Spotify") || ex.Message.StartsWith("Reconnect Spotify"))
+        { return new(false, "O Spotify não está conectado. Conecte nas configurações do Federano."); }
+        catch (Exception ex) when (ex is IOException or HttpRequestException or JsonException or OperationCanceledException or InvalidOperationException)
+        { return new(false, "Não consegui falar com o Spotify agora."); }
+    }
     public void Dispose() { _http.Dispose(); _tokenGate.Dispose(); _readGate.Dispose(); }
 }

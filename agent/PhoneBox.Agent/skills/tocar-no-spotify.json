@@ -1,0 +1,9 @@
+{
+  // Federano: "toca Evidências de Chitãozinho e Xororó", "toca a playlist Rock Nacional", "toca o álbum Acústico
+  // MTV", "toca músicas do Djavan". Busca no Spotify e toca no PC (Spotify Premium, conectado nas configurações).
+  "name": "Tocar no Spotify",
+  "query": true,
+  "triggers": ["toca", "toque", "tocar", "coloca", "coloque", "bota", "poe", "quero ouvir", "play", "toca ai", "busca", "procura"],
+  "action": "spotify.play",
+  "reply": "Tocando \"{title}\"[ de {artist}] no Spotify."
+}

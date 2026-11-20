@@ -21,6 +21,9 @@ public sealed record SkillDef
     public int Seconds { get; init; }
     /// <summary>volume.up / volume.down: how many points of the PC's volume (0-100); default 10.</summary>
     public int Step { get; init; }
+    /// <summary>True: a trigger is the start of what was said and the rest is what to look for, e.g. "toca" +
+    /// "evidências de chitãozinho e xororó" (spotify.play). Said alone, the trigger is left to the other skills.</summary>
+    public bool Query { get; init; }
     /// <summary>Answer; {title}, {artist}, {album}, {app}, {state} are filled from the media playing on the PC
     /// ({volume} after a volume action).</summary>
     public string Reply { get; init; } = "";
@@ -33,7 +36,8 @@ public sealed record SkillDef
 /// <param name="Mirror">True: the tablet shows the PC's video live (GET /api/mirror/frame).</param>
 public sealed record SkillResult(bool Ok, string? Skill, string Reply, string? Open = null, bool Mirror = false);
 
-public sealed class SkillEngine(ILogger<SkillEngine> log, MediaMonitor media, YouTubeTracker youtube, MirrorCapture mirror, AudioControl audio)
+public sealed class SkillEngine(ILogger<SkillEngine> log, MediaMonitor media, YouTubeTracker youtube, MirrorCapture mirror, AudioControl audio,
+    SpotifyControl spotify)
 {
     public static readonly string[] WakeWords = ["federano"];
     static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true, ReadCommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
@@ -62,11 +66,25 @@ public sealed class SkillEngine(ILogger<SkillEngine> log, MediaMonitor media, Yo
 
     public async Task<SkillResult> RunAsync(string text)
     {
-        var skill = Match(Load(), text);
+        var all = Load();
+        // "toca" alone continues the player; "toca <something>" looks it up
+        var query = Exact(all, text) is null ? MatchQuery(all, text) : null;
+        var skill = query?.Skill ?? Match(all, text);
         if (skill is null) return new(false, null, "Não entendi. Ainda não tenho uma skill para isso.");
         log.LogInformation("skill: {Skill}", skill.Id);
         switch (skill.Action)
         {
+            case "spotify.play":
+            {
+                if (query is not { } q) return new(false, skill.Id, "Fale o que tocar, por exemplo: toca Evidências de Chitãozinho e Xororó.");
+                var (kind, what) = ParseMusic(q.Query);
+                if (what.Length == 0) return new(false, skill.Id, "Fale o nome da música, do álbum ou da playlist.");
+                var r = await spotify.PlaySearch(what, kind, CancellationToken.None);
+                if (!r.Ok) return new(false, skill.Id, r.Message);
+                var vals = new Dictionary<string, string> { ["title"] = r.Title, ["artist"] = r.Artist, ["kind"] = KindName(kind) };
+                var reply = skill.Reply.Length > 0 ? Fill(skill.Reply, vals) : $"Tocando \"{r.Title}\" no Spotify.";
+                return new(true, skill.Id, reply);
+            }
             case "media.now":
                 return Answer(skill, media.Snapshot());
             case "media.playpause" or "media.next" or "media.prev" or "media.play" or "media.pause":
@@ -159,12 +177,80 @@ public sealed class SkillEngine(ILogger<SkillEngine> log, MediaMonitor media, Yo
         return Sub(withOptional);
     }
 
-    /// <summary>The skill with the longest trigger contained in the text (ignoring case, accents, punctuation and the wake word).</summary>
-    internal static SkillDef? Match(IEnumerable<SkillDef> skills, string text)
+    /// <summary>A skill (not a query one) whose trigger is all that was said, e.g. "toca" or "play".</summary>
+    internal static SkillDef? Exact(IEnumerable<SkillDef> skills, string text)
+    {
+        var said = Said(text).Trim();
+        return skills.Where(s => !s.Query).FirstOrDefault(s => s.Triggers.Any(t => Normalize(t) == said));
+    }
+
+    /// <summary>A query skill whose trigger starts what was said, with the rest (as it was said, accents kept).</summary>
+    internal static (SkillDef Skill, string Query)? MatchQuery(IEnumerable<SkillDef> skills, string text)
+    {
+        var words = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+            .Select(w => (Orig: w, Norm: Normalize(w))).Where(w => w.Norm.Length > 0).ToList();
+        while (words.Count > 0 && WakeWords.Contains(words[0].Norm)) words.RemoveAt(0);
+        (SkillDef Skill, string Query, int Len)? best = null;
+        foreach (var s in skills.Where(s => s.Query))
+            foreach (var t in s.Triggers.Select(t => Normalize(t)).Where(t => t.Length > 0))
+            {
+                for (var k = 1; k < words.Count; k++)
+                {
+                    var head = string.Join(' ', words.Take(k).Select(w => w.Norm));
+                    if (head.Length > t.Length) break;
+                    if (head != t) continue;
+                    var rest = string.Join(' ', words.Skip(k).Select(w => w.Orig)).Trim(' ', ',', '.', '!', '?', ';', ':', '"', '“', '”');
+                    if (rest.Length > 0 && (best is null || t.Length > best.Value.Len)) best = (s, rest, t.Length);
+                    break;
+                }
+            }
+        return best is { } b ? (b.Skill, b.Query) : null;
+    }
+
+    /// <summary>What to look up and its kind (track, album, playlist, artist): "a playlist rock nacional",
+    /// "o álbum Acústico", "músicas do Djavan", "Evidências de Chitãozinho e Xororó" (the last "de" is dropped).</summary>
+    internal static (string Kind, string What) ParseMusic(string query)
+    {
+        var words = query.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).ToList();
+        string N(int i) => i < words.Count ? Normalize(words[i]) : "";
+        bool Starts(params string[] lead)
+        {
+            if (lead.Length > words.Count || lead.Where((w, i) => N(i) != w).Any()) return false;
+            words.RemoveRange(0, lead.Length);
+            return true;
+        }
+        // trailing "no spotify"
+        if (words.Count >= 2 && N(words.Count - 1) == "spotify" && N(words.Count - 2) is "no" or "pelo") words.RemoveRange(words.Count - 2, 2);
+        var kind = "track";
+        if (Starts("a", "playlist") || Starts("playlist") || Starts("minha", "playlist")) kind = "playlist";
+        else if (Starts("o", "album") || Starts("album") || Starts("o", "disco") || Starts("disco")) kind = "album";
+        else if (Starts("o", "artista") || Starts("artista") || Starts("a", "banda") || Starts("banda")
+                 || Starts("as", "musicas", "do") || Starts("as", "musicas", "da") || Starts("as", "musicas", "de")
+                 || Starts("musicas", "do") || Starts("musicas", "da") || Starts("musicas", "de")
+                 || Starts("algo", "do") || Starts("algo", "da") || Starts("alguma", "do") || Starts("alguma", "da")) kind = "artist";
+        else { _ = Starts("a", "musica") || Starts("musica") || Starts("a", "cancao") || Starts("o", "som", "do") || Starts("o", "som", "da"); }
+        if (kind is "track" or "album")
+        {
+            var sep = words.FindLastIndex(w => Normalize(w) is "de" or "do" or "da" or "dos" or "das");
+            if (sep > 0 && sep < words.Count - 1) words.RemoveAt(sep);
+        }
+        return (kind, string.Join(' ', words).Trim());
+    }
+
+    static string KindName(string kind) => kind switch { "album" => "álbum", "playlist" => "playlist", "artist" => "artista", _ => "música" };
+
+    static string Said(string text)
     {
         var said = Normalize(text);
         foreach (var w in WakeWords) said = said.Replace(w, " ");
-        said = " " + string.Join(' ', said.Split(' ', StringSplitOptions.RemoveEmptyEntries)) + " ";
+        return " " + string.Join(' ', said.Split(' ', StringSplitOptions.RemoveEmptyEntries)) + " ";
+    }
+
+    /// <summary>The skill with the longest trigger contained in the text (ignoring case, accents, punctuation and the wake word).</summary>
+    internal static SkillDef? Match(IEnumerable<SkillDef> skills, string text)
+    {
+        var said = Said(text);
+        skills = skills.Where(s => !s.Query);
         return skills
             .SelectMany(s => s.Triggers.Select(t => (Skill: s, Trigger: Normalize(t).Trim())))
             .Where(x => x.Trigger.Length > 0 && said.Contains(" " + x.Trigger + " "))

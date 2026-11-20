@@ -111,3 +111,50 @@ public class ShippedSkillsTests
         Assert.Equal(10, Shipped.Single(s => s.Id == "aumentar-volume").Step);
     }
 }
+
+public class SpotifyVoiceTests
+{
+    static readonly IReadOnlyList<SkillDef> Shipped = Directory
+        .EnumerateFiles(Path.Combine(AppContext.BaseDirectory, "skills"), "*.json")
+        .Select(f => System.Text.Json.JsonSerializer.Deserialize<SkillDef>(File.ReadAllText(f), new System.Text.Json.JsonSerializerOptions
+            { PropertyNameCaseInsensitive = true, ReadCommentHandling = System.Text.Json.JsonCommentHandling.Skip, AllowTrailingCommas = true })!
+            with { Id = Path.GetFileNameWithoutExtension(f) })
+        .ToList();
+
+    [Theory]
+    [InlineData("Federano, toca Evidências de Chitãozinho e Xororó", "Evidências de Chitãozinho e Xororó")]
+    [InlineData("toca aí Garota de Ipanema", "Garota de Ipanema")]
+    [InlineData("quero ouvir Djavan", "Djavan")]
+    public void QueryKeepsWhatWasSaid(string said, string query)
+    {
+        Assert.Null(SkillEngine.Exact(Shipped, said));
+        var m = SkillEngine.MatchQuery(Shipped, said);
+        Assert.Equal("tocar-no-spotify", m?.Skill.Id);
+        Assert.Equal(query, m?.Query);
+    }
+
+    [Theory]
+    [InlineData("toca")]
+    [InlineData("Federano, toca")]
+    [InlineData("toca de novo")]
+    [InlineData("play")]
+    public void TriggerAloneContinues(string said) => Assert.Equal("continuar", SkillEngine.Exact(Shipped, said)?.Id);
+
+    [Fact]
+    public void OtherCommandsAreNotQueries()
+    {
+        Assert.Null(SkillEngine.MatchQuery(Shipped, "volta 10 segundos"));
+        Assert.Equal("pausar", SkillEngine.Match(Shipped, "pausa")?.Id);
+        Assert.Equal("o-que-esta-tocando", SkillEngine.Match(Shipped, "o que está tocando")?.Id);
+    }
+
+    [Theory]
+    [InlineData("Evidências de Chitãozinho e Xororó", "track", "Evidências Chitãozinho e Xororó")]
+    [InlineData("a música Garota de Ipanema de Tom Jobim", "track", "Garota de Ipanema Tom Jobim")]
+    [InlineData("a playlist Rock Nacional no Spotify", "playlist", "Rock Nacional")]
+    [InlineData("o álbum Acústico MTV", "album", "Acústico MTV")]
+    [InlineData("músicas do Djavan", "artist", "Djavan")]
+    [InlineData("Djavan", "track", "Djavan")]
+    public void ParsesKindAndWhat(string query, string kind, string what) =>
+        Assert.Equal((kind, what), SkillEngine.ParseMusic(query));
+}
