@@ -1349,12 +1349,9 @@ body.controls-top .ap-foot { order: -1; margin-bottom: 4px; }
   opacity: 0; transition: opacity .25s, box-shadow .2s; }
 .mirror-bubble.in { opacity: .78; }
 .mirror-bubble.in.held, .mirror-bubble.in:active { opacity: 1; }
-.mirror-bubble img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; background: #111;
-  border: 3px solid var(--accent, #2dd4bf); box-shadow: 0 10px 30px rgba(0,0,0,.55); pointer-events: none; }
-.mirror-bubble-live { position: absolute; left: 50%; bottom: -6px; transform: translateX(-50%); padding: 2px 8px; border-radius: 999px; background: #ef4444;
-  color: #fff; font-size: 11px; font-weight: 800; letter-spacing: .08em; pointer-events: none; }
-.mirror-bubble-live::before { content: 'AO VIVO'; }
-.mirror-bubble-live::after { content: ''; display: inline-block; width: 6px; height: 6px; margin-left: 5px; border-radius: 50%; background: #fff; vertical-align: 1px;
-  animation: bubble-blink 1.2s ease-in-out infinite; }
-@keyframes bubble-blink { 50% { opacity: .2; } }
+.mirror-bubble-icon { width: 100%; height: 100%; border-radius: 50%; background: rgba(18,20,26,.92); border: 2px solid rgba(255,255,255,.18);
+  box-shadow: 0 10px 30px rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; pointer-events: none;
+  animation: bubble-breathe 2.4s ease-in-out infinite; }
+.mirror-bubble-icon svg { width: 72%; height: 72%; }
+@keyframes bubble-breathe { 50% { box-shadow: 0 10px 30px rgba(0,0,0,.55), 0 0 0 8px rgba(230,33,23,.18); } }
 .mirror-bubble-x { position: absolute; right: -4px; top: -4px; width: 34px; height: 34px; border-radius: 50%; border: 0; background: rgba(20,20,24,.9); color: #fff; font-size: 15px; }

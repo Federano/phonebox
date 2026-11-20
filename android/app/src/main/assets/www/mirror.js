@@ -32,14 +32,14 @@ export function openMirror(title) {
   // ---- floating bubble while minimized: live thumbnail, drag it anywhere, tap to come back
   const bubble = document.createElement('div');
   bubble.className = 'mirror-bubble';
-  const bimg = document.createElement('img');
-  bimg.alt = '';
-  const live = document.createElement('span');
-  live.className = 'mirror-bubble-live';
+  bubble.title = 'Voltar ao vídeo do PC';
+  const icon = document.createElement('div');
+  icon.className = 'mirror-bubble-icon';
+  icon.innerHTML = '<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="8" y="16" width="48" height="32" rx="10" fill="#e62117"/><path d="M27 24.5v15l13-7.5z" fill="#fff"/></svg>';
   const bx = document.createElement('button');
   bx.className = 'mirror-bubble-x';
   bx.textContent = '✕';
-  bubble.append(bimg, live, bx);
+  bubble.append(icon, bx);
   let minimized = false;
   const pos = (() => { try { return JSON.parse(localStorage.getItem('federano.bubble') || 'null'); } catch (_) { return null; } })() || { x: innerWidth - 150, y: innerHeight - 190 };
   const place = () => {
@@ -47,8 +47,12 @@ export function openMirror(title) {
     bubble.style.transform = `translate(${pos.x}px, ${pos.y}px)`;
   };
   let drag = null, pressTimer = 0;
+  // the bubble keeps its touches: the panel must not also take them as a page swipe or tap
+  for (const t of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'touchstart', 'touchmove', 'touchend', 'click', 'mousedown', 'mouseup'])
+    bubble.addEventListener(t, (e) => e.stopPropagation());
   bubble.addEventListener('pointerdown', (e) => {
     if (e.target === bx) return;
+    e.preventDefault();
     drag = { sx: e.clientX, sy: e.clientY, x: pos.x, y: pos.y, moved: false };
     bubble.setPointerCapture(e.pointerId);
     bubble.classList.add('held');
@@ -145,7 +149,6 @@ export function openMirror(title) {
         shown = seq;
         const url = URL.createObjectURL(blob);
         img.src = url;
-        if (minimized) bimg.src = url;
         if (lastUrl) URL.revokeObjectURL(lastUrl);
         lastUrl = url;
         frames++;

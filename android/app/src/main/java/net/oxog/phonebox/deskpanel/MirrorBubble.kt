@@ -11,7 +11,11 @@ import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.WindowManager
-import android.widget.TextView
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RectF
+import android.view.View
 import kotlin.math.abs
 
 /**
@@ -21,7 +25,7 @@ import kotlin.math.abs
  */
 class MirrorBubble(private val context: Context) {
     private val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    private var view: TextView? = null
+    private var view: View? = null
     private var x = -1
     private var y = -1
 
@@ -35,15 +39,12 @@ class MirrorBubble(private val context: Context) {
         val screenW = context.resources.displayMetrics.widthPixels
         val screenH = context.resources.displayMetrics.heightPixels
         if (x < 0) { x = screenW - size - (16 * d).toInt(); y = screenH - size - (120 * d).toInt() }
-        val v = TextView(context).apply {
-            text = "📺"
-            textSize = 30f
-            gravity = Gravity.CENTER
+        val v = PlayIcon(context).apply {
             alpha = 0.85f
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#E6141820"))
-                setStroke((3 * d).toInt(), Color.parseColor("#2DD4BF"))
+                setColor(Color.parseColor("#EB12141A"))
+                setStroke((2 * d).toInt(), Color.parseColor("#2EFFFFFF"))
             }
             elevation = 12 * d
             contentDescription = "Voltar ao vídeo do PC"
@@ -90,6 +91,25 @@ class MirrorBubble(private val context: Context) {
         context.startActivity(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
             .putExtra(EXTRA_RESTORE, true))
+    }
+
+    /** A red rounded rectangle with a white "play" triangle. */
+    private class PlayIcon(context: Context) : View(context) {
+        private val red = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#E62117") }
+        private val white = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val w = width.toFloat(); val h = height.toFloat()
+            val rw = w * 0.56f; val rh = rw * 0.68f
+            val r = RectF((w - rw) / 2, (h - rh) / 2, (w + rw) / 2, (h + rh) / 2)
+            canvas.drawRoundRect(r, rh * 0.3f, rh * 0.3f, red)
+            val t = rh * 0.42f
+            val cx = w / 2 + t * 0.12f; val cy = h / 2
+            val p = Path().apply {
+                moveTo(cx - t * 0.45f, cy - t * 0.55f); lineTo(cx - t * 0.45f, cy + t * 0.55f); lineTo(cx + t * 0.55f, cy); close()
+            }
+            canvas.drawPath(p, white)
+        }
     }
 
     companion object {
