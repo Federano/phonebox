@@ -74,7 +74,7 @@ public sealed class MediaMonitor(ILogger<MediaMonitor> log) : BackgroundService
 
     private async Task PollCore(CancellationToken ct)
     {
-        var s = _mgr!.GetCurrentSession();
+        var s = Pick();
         Observe(s);
         if (s is null) { _snap = null; _art.Clear(); return; }
         var revision = Interlocked.Read(ref _revision);
@@ -122,7 +122,7 @@ public sealed class MediaMonitor(ILogger<MediaMonitor> log) : BackgroundService
 
     public async Task<bool> Control(string action, long? ms)
     {
-        var s = _mgr?.GetCurrentSession();
+        var s = Pick();
         if (s is null)
         {
             // No session: send the media key instead (wakes up Spotify, for example).
@@ -156,9 +156,31 @@ public sealed class MediaMonitor(ILogger<MediaMonitor> log) : BackgroundService
         return to;
     }
 
+    /// <summary>Federano: true while a browser video is mirrored to the tablet. The browser's media session is then
+    /// the one shown and controlled, even when Windows still calls another app (e.g. a paused Spotify) the current one.</summary>
+    public volatile bool PreferBrowser;
+
+    static readonly string[] Browsers = ["chrome", "msedge", "brave", "opera", "vivaldi", "firefox", "308046b0af4a39cb"];
+    internal static bool IsBrowserApp(string? id) =>
+        id is not null && Browsers.Any(b => id.Contains(b, StringComparison.OrdinalIgnoreCase));
+
+    private GlobalSystemMediaTransportControlsSession? Pick()
+    {
+        var current = _mgr?.GetCurrentSession();
+        if (!PreferBrowser || _mgr is null) return current;
+        try
+        {
+            if (current is not null && IsBrowserApp(current.SourceAppUserModelId)) return current;
+            var browsers = _mgr.GetSessions().Where(x => IsBrowserApp(x.SourceAppUserModelId)).ToList();
+            return browsers.FirstOrDefault(x => x.GetPlaybackInfo().PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
+                ?? browsers.FirstOrDefault() ?? current;
+        }
+        catch { return current; }
+    }
+
     public async Task<bool> PauseAsync()
     {
-        var s = _mgr?.GetCurrentSession();
+        var s = Pick();
         if (s is null || s.GetPlaybackInfo().PlaybackStatus != GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
             return false;
         var ok = await s.TryPauseAsync();

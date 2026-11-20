@@ -83,6 +83,7 @@ public sealed class MirrorCapture(ILogger<MirrorCapture> log, MediaMonitor media
                 if (_browserTab == tab) return null;
                 StopLocked();
                 _browserTab = tab;
+                media.PreferBrowser = true;
                 _title = media.Snapshot()?.Title ?? "";
                 _idleTimer ??= new System.Threading.Timer(_ => StopWhenIdle(), null, 1000, 1000);
             }
@@ -109,6 +110,7 @@ public sealed class MirrorCapture(ILogger<MirrorCapture> log, MediaMonitor media
                 _session.StartCapture();
                 _hwnd = hwnd; _title = title;
                 _browserWindow = IsBrowser(ExeName(media.SourceAppId));
+                media.PreferBrowser = _browserWindow;
                 _idleTimer ??= new System.Threading.Timer(_ => StopWhenIdle(), null, 1000, 1000);
                 log.LogInformation("mirror: capturing \"{Title}\"", title);
                 return null;
@@ -160,6 +162,7 @@ public sealed class MirrorCapture(ILogger<MirrorCapture> log, MediaMonitor media
         try { _session?.Dispose(); } catch { }
         try { _pool?.Dispose(); } catch { }
         _session = null; _pool = null; _item = null; _hwnd = IntPtr.Zero; _jpeg = null; _browserTab = null;
+        media.PreferBrowser = false;
     }
 
     private void OnFrame(Direct3D11CaptureFramePool sender, object args)
