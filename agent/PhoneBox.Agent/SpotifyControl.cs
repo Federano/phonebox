@@ -288,7 +288,7 @@ public sealed class SpotifyControl : IDisposable
         try
         {
             var found = await Request(HttpMethod.Get,
-                $"search?type={kind}&limit=5&market=from_token&q={Uri.EscapeDataString(query)}", null, ct);
+                $"search?type={kind}&limit=5&q={Uri.EscapeDataString(query)}", null, ct);   // market=from_token needs another scope
             var item = (found?[kind + "s"]?["items"] as JsonArray)?.FirstOrDefault(i => i?["uri"] is not null);
             if (item is null) return new(false, $"Não achei \"{query}\" no Spotify.");
             var uri = item["uri"]!.GetValue<string>();
@@ -297,22 +297,39 @@ public sealed class SpotifyControl : IDisposable
                 ? string.Join(", ", artists.Select(a => a?["name"]?.GetValue<string>() ?? "").Where(n => n.Length > 0))
                 : item["owner"]?["display_name"]?.GetValue<string>() ?? "";
             JsonObject Body() => kind == "track" ? new() { ["uris"] = new JsonArray(uri) } : new() { ["context_uri"] = uri };
-            try { await Request(HttpMethod.Put, "me/player/play" + DeviceQuery(), Body(), ct); }
-            catch (IOException ex) when (ex.Message.Contains("HTTP 404"))
+            // Plays on this PC's Spotify (the voice command is about the PC), never on a phone that happens to be the
+            // active player. Spotify closed on the PC: open it and wait until it shows up (up to ~15 s).
+            async Task<(string? Id, string Name)> Computer()
             {
-                // no active player: wake up one Spotify knows, this computer first
                 var devices = (await Request(HttpMethod.Get, "me/player/devices", null, ct))?["devices"] as JsonArray ?? [];
-                var device = devices.FirstOrDefault(d => d?["type"]?.GetValue<string>() == "Computer") ?? devices.FirstOrDefault();
-                if (device?["id"]?.GetValue<string>() is not { Length: > 0 } id)
-                    return new(false, "O Spotify não está aberto em nenhum aparelho. Abra o Spotify no PC e peça de novo.");
-                await Request(HttpMethod.Put, "me/player/play?device_id=" + Uri.EscapeDataString(id), Body(), ct);
+                var d = devices.FirstOrDefault(x => x?["type"]?.GetValue<string>() == "Computer");
+                return (d?["id"]?.GetValue<string>() is { Length: > 0 } found ? found : null, d?["name"]?.GetValue<string>() ?? "");
+            }
+            var pinned = _config.Get().Controls.SpotifyDevice;
+            var target = pinned is { Length: > 0 } ? pinned : (await Computer()).Id;
+            var launched = false;
+            if (target is null && OperatingSystem.IsWindows())
+            {
+                launched = true;
+                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("spotify:") { UseShellExecute = true }); } catch { }
+                for (var i = 0; i < 15 && target is null; i++) { await Task.Delay(1000, ct); target = (await Computer()).Id; }
+            }
+            if (target is null)
+                return new(false, "Não consegui abrir o Spotify no PC. Abra o Spotify (na mesma conta conectada) e peça de novo.");
+            await Request(HttpMethod.Put, "me/player/play?device_id=" + Uri.EscapeDataString(target), Body(), ct);
+            if (launched)
+            {
+                // a Spotify app that has just opened may pause a moment later (it restores its last state): resume once
+                await Task.Delay(3500, ct);
+                if ((await Request(HttpMethod.Get, "me/player", null, ct))?["is_playing"]?.GetValue<bool>() == false)
+                    await Request(HttpMethod.Put, "me/player/play?device_id=" + Uri.EscapeDataString(target), new JsonObject(), ct);
             }
             _snapshot = null;
             return new(true, "", title, artist);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (IOException ex) when (ex.Message.Contains("HTTP 403"))
-        { return new(false, "O Spotify recusou: mandar tocar só funciona com Spotify Premium."); }
+        { return new(false, "O Spotify recusou o pedido (mandar tocar exige Spotify Premium na conta conectada)."); }
         catch (IOException ex) when (ex.Message.StartsWith("Connect Spotify") || ex.Message.StartsWith("Reconnect Spotify"))
         { return new(false, "O Spotify não está conectado. Conecte nas configurações do Federano."); }
         catch (Exception ex) when (ex is IOException or HttpRequestException or JsonException or OperationCanceledException or InvalidOperationException)
