@@ -68,6 +68,20 @@ W.lyrics = {
     const img = h('img', 'ly-photo'); img.alt = '';
     const chip = h('div', 'ly-chip', '');
     const trBtn = h('button', 'ly-tr', h('i'), 'Tradução'); trBtn.hidden = true;
+    // discreet full-screen switch: only the lyrics, centred, bigger (the card with the photo and controls goes away)
+    const FS_ON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>';
+    const FS_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h5V3M21 8h-5V3M3 16h5v5M21 16h-5v5"/></svg>';
+    const fsBtn = h('button', 'ly-fsbtn');
+    let fullOnly = false;
+    try { fullOnly = localStorage.getItem('federano.lyricsFull') === '1'; } catch (_) {}
+    const applyFs = () => {
+      box.classList.toggle('ly-fs', fullOnly);
+      fsBtn.innerHTML = fullOnly ? FS_OFF : FS_ON;
+      fsBtn.setAttribute('aria-label', fullOnly ? 'Mostrar o cartão' : 'Só a letra em tela cheia');
+      fsBtn.title = fsBtn.getAttribute('aria-label');
+    };
+    applyFs();
+    fsBtn.onclick = () => { haptic(); fullOnly = !fullOnly; applyFs(); try { localStorage.setItem('federano.lyricsFull', fullOnly ? '1' : '0'); } catch (_) {} active = -2; };
     const title = h('div', 'ly-title', '');
     const artist = h('div', 'ly-artist', '');
     const fill = h('i');
@@ -106,7 +120,7 @@ W.lyrics = {
     }
     if (!matchMedia('(prefers-reduced-motion: reduce)').matches) raf = requestAnimationFrame(animate);
     box.append(
-      h('div', 'ly-main', bgPhoto, h('div', 'ly-bgveil'), fx, h('div', 'ly-top', chip, trBtn), h('div', 'ly-words', list, note)),
+      h('div', 'ly-main', bgPhoto, h('div', 'ly-bgveil'), fx, h('div', 'ly-top', chip, h('div', 'ly-topr', trBtn, fsBtn)), h('div', 'ly-words', list, note)),
       h('div', 'ly-card', h('div', 'ly-pic', img), h('div', 'ly-meta', title, artist), h('div', 'ly-prog', bar, times), ctl, qHead, queue));
     // the next songs; tapping one plays it (Spotify connected in the settings)
     let qKey = '', lastQueue = [];

@@ -1479,3 +1479,12 @@ body.controls-top .ap-foot { order: -1; margin-bottom: 4px; }
 .ly-line.on .ly-tl { color: color-mix(in srgb, var(--ly-accent, #fff) 85%, white); }
 .ly-line.past .ly-tl { color: color-mix(in srgb, var(--ly-accent, #fff) 25%, transparent); }
 .ly-bgveil { background: radial-gradient(80% 75% at 50% 45%, color-mix(in srgb, var(--ly-bg, #000) 10%, transparent), color-mix(in srgb, var(--ly-bg, #000) 70%, transparent)); }
+/* lyrics page: discreet full-screen switch — only the lyrics, centred and bigger */
+.ly-topr { display: flex; align-items: center; gap: 8px; }
+.ly-fsbtn { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; color: rgba(255, 255, 255, .55); background: rgba(255, 255, 255, .06); }
+.ly-fsbtn svg { width: 17px; height: 17px; }
+.ly-fsbtn:active { color: #fff; background: rgba(255, 255, 255, .18); }
+.w.ly.ly-fs { grid-template-columns: 1fr; }
+.w.ly.ly-fs .ly-card { display: none; }
+.w.ly.ly-fs .ly-lines { padding: 0 clamp(24px, 8cqw, 120px); }
+.w.ly.ly-fs .ly-line { font-size: clamp(24px, 9cqmin, 64px); max-width: 28ch; }

@@ -156,7 +156,7 @@ test('a new song shows at once and its lyrics follow; the queue stays during a s
       if (String(url).includes('/lyrics/now')) {
         window.__step++;
         // first answers: the new song, no lyrics yet and an empty queue (as Spotify does right after a skip)
-        const a = window.__step < 3
+        const a = window.__step < 8
           ? { playing: true, key: 'miracle man\u0001oliver tree', media, artistImage: null, queue: window.__step === 1 ? q : [], lyrics: null, pending: true }
           : { playing: true, key: 'miracle man\u0001oliver tree', media, artistImage: null, queue: [], lyrics: { found: true, instrumental: false, plain: '', lines: [{ t: 1000, text: 'Line one' }] }, pending: false };
         return Promise.resolve(new Response(JSON.stringify(a), { headers: { 'Content-Type': 'application/json' } }));
@@ -199,4 +199,16 @@ test('scrolling the lyrics by hand is not pulled back to the line being sung', a
   await page.waitForTimeout(2500);   // the song moves on a line meanwhile
   const top = await list.evaluate((el) => el.scrollTop);
   expect(top).toBeGreaterThan(900);   // still where the hand left it, not back at line 2
+});
+
+test('a discreet button shows only the lyrics, full screen, and brings the card back', async ({ page }) => {
+  await open(page, SONG);
+  await expect(page.locator('.ly-card')).toBeVisible();
+  await page.locator('.ly-fsbtn').click();
+  await expect(page.locator('.w.ly')).toHaveClass(/ly-fs/);
+  await expect(page.locator('.ly-card')).toBeHidden();
+  await expect(page.locator('.ly-line.on')).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath('lyrics-full.png') });
+  await page.locator('.ly-fsbtn').click();
+  await expect(page.locator('.ly-card')).toBeVisible();
 });
