@@ -1508,3 +1508,8 @@ body.controls-top .ap-foot { order: -1; margin-bottom: 4px; }
 /* lyrics page: breathing vignette (dark edges, cover-tinted) */
 .ly-vig { position: absolute; inset: 0; pointer-events: none; opacity: .6;
   background: radial-gradient(75% 70% at 50% 48%, transparent 45%, color-mix(in srgb, var(--ly-bg, #000) 55%, #000) 100%); }
+/* lyrics page, lighter and quicker: the lines change colour and size faster; the photo layer is drawn once and only moved */
+.ly-line { transition: color .18s ease-out, transform .18s ease-out; }
+.ly-line.on { transition: color .18s ease-out, transform .1s ease-out; will-change: transform; }
+.ly-bgphoto { will-change: transform; }
+.ly-vig { will-change: opacity; }

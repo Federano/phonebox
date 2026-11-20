@@ -40,7 +40,7 @@ function weave(g, W, H, st, cols) {
     const amp = ((6 + 34 * lvl * st.act * en) * depth) + 4;
     const sp = depth;
     g.beginPath();
-    for (let x = 0; x <= W; x += 6 * s) {
+    for (let x = 0; x <= W; x += 12 * s) {
       let y = y0 + (Math.sin(x / s * .009 + ph * .9 * sp + k * .35) * amp + Math.sin(x / s * .021 - ph * 1.4 * sp + k * .2) * 6 * depth) * s;
       // a ring of light moving out from the centre when a new lyric line starts
       if (waveT < 1.4) { const d = Math.hypot(x - W / 2, y0 - H * .45); y += Math.exp(-((d - waveR) ** 2) / (1800 * s * s)) * 14 * s * (1 - waveT / 1.4); }
@@ -50,20 +50,7 @@ function weave(g, W, H, st, cols) {
     const alpha = (.16 + .08 * Math.sin(k + ph)) * [1.25, .85, .55][layer] * (.35 + .65 * st.act) + .45 * st.pulse;
     g.strokeStyle = `rgba(${col},${Math.min(.9, alpha).toFixed(3)})`;
     g.lineWidth = (1.2 + 1.8 * st.pulse) * [1.4, 1, .8][layer] * s;
-    if (st.pulse > .2) { g.shadowColor = `rgb(${col})`; g.shadowBlur = 10 * st.pulse * s; } else g.shadowBlur = 0;
     g.stroke();
-  }
-  g.shadowBlur = 0;
-  // light particles drifting up between the lines, brighter on the beat
-  if (!st.parts) st.parts = Array.from({ length: 46 }, () => ({ x: Math.random(), y: Math.random(), r: 1.5 + Math.random() * 5, v: .02 + Math.random() * .05, c: Math.floor(Math.random() * 4), ph: Math.random() * 6 }));
-  const dt = Math.min(.05, (st.now - (st.partsAt || st.now)) / 1000); st.partsAt = st.now;
-  for (const q of st.parts) {
-    q.y -= q.v * dt * (.3 + .7 * st.act); q.x += Math.sin(t * .6 + q.ph) * .0004;
-    if (q.y < -.05) { q.y = 1.05; q.x = Math.random(); }
-    const c = rgb[q.c % rgb.length].map(Math.round).join(','), a = (.1 + .25 * st.pulse + .08 * Math.sin(t * 1.5 + q.ph)) * (.4 + .6 * st.act);
-    const x = q.x * W, y = q.y * H, r = q.r * s * 2.4;
-    const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, `rgba(${c},${Math.max(0, a).toFixed(3)})`); gr.addColorStop(1, `rgba(${c},0)`);
-    g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
   }
 }
 // Federano: podcast background (animation 1, voice wave): three soft lines across the screen that move when someone talks
@@ -81,9 +68,10 @@ function voiceWave(g, W, H, st, cols) {
       x ? g.lineTo(x, y) : g.moveTo(x, y);
     }
     g.strokeStyle = `rgba(${c},${(.5 - k * .12) * (.45 + .55 * st.act)})`;
-    g.lineWidth = (3 - k * .7) * s; g.shadowColor = `rgb(${c})`; g.shadowBlur = 14 * s; g.stroke();
+    // soft glow: a wide faint stroke under the line (much lighter than a canvas shadow)
+    g.lineWidth = (9 - k * 2) * s; g.globalAlpha = .18; g.stroke(); g.globalAlpha = 1;
+    g.lineWidth = (3 - k * .7) * s; g.stroke();
   }
-  g.shadowBlur = 0;
 }
 
 /** The cover's own colours: its pixels grouped by hue, the four strongest groups (vivid and common first), each
@@ -191,11 +179,12 @@ W.lyrics = {
       fxs.short += (loud - fxs.short) * .02; fxs.long += (loud - fxs.long) * .002;
       fxs.energy = Math.max(.6, Math.min(1.6, fxs.long > .02 ? fxs.short / fxs.long : 1));
       // the line being sung breathes with the beat, and fills with colour as it is sung (karaoke)
-      box.style.setProperty('--ly-beat', fxs.pulse.toFixed(3));
       if (lines.length && active >= 0 && lines[active]) {
-        const t0 = lines[active].t, t1 = lines[active + 1] ? lines[active + 1].t : t0 + 4000;
-        const k = Math.max(0, Math.min(1, (pos() + LEAD - t0) / Math.max(400, t1 - t0)));
-        lines[active].el.style.setProperty('--ly-fill', (k * 100).toFixed(1) + '%');
+        const el = lines[active].el, t0 = lines[active].t, t1 = lines[active + 1] ? lines[active + 1].t : t0 + 4000;
+        const k = Math.round(Math.max(0, Math.min(1, (pos() + LEAD - t0) / Math.max(400, t1 - t0))) * 200) / 2;
+        const b = Math.round(fxs.pulse * 20) / 20;
+        if (el._fill !== k) { el._fill = k; el.style.setProperty('--ly-fill', k + '%'); }
+        if (el._beat !== b) { el._beat = b; el.style.setProperty('--ly-beat', b); }
       }
       fxs.ph += (ms - (fxs.lastMs || ms)) / 1000 * (.5 + .7 * fxs.act);
       fxs.lastMs = ms;
@@ -205,7 +194,6 @@ W.lyrics = {
       // the blurred photo breathes (slow zoom) and lights up a little on the beat; dimmer when paused
       vig.style.opacity = ((.55 + .3 * Math.sin(ms / 2600)) * (playing ? 1 : .7) + .15 * fxs.pulse).toFixed(3);
       bgPhoto.style.transform = `scale(${(1 + .04 * Math.sin(ms / 4000)).toFixed(4)})`;
-      bgPhoto.style.filter = `blur(24px) brightness(${((.44 + .06 * fxs.energy + .12 * fxs.pulse) * (playing ? 1 : .8)).toFixed(3)}) saturate(1.2)`;
       // keep the agent's analyser running while this page shows (it stops a few seconds after the last ask)
       if (Date.now() - lastWant > 2000) {
         lastWant = Date.now();
@@ -295,8 +283,19 @@ W.lyrics = {
     setPod(false);
     // tap a line: the song jumps there (like Spotify)
     // scrolling the lyrics by hand: the page stops following the song for a while, so a later line can be picked
-    let handUntil = 0;
-    const byHand = () => { handUntil = Date.now() + 6000; };
+    let handUntil = 0, glideRaf = 0, glideTo = -1;
+    const byHand = () => { handUntil = Date.now() + 6000; cancelAnimationFrame(glideRaf); glideTo = -1; };
+    function glide(top) {
+      if (Math.abs(top - glideTo) < 2 || Math.abs(top - list.scrollTop) < 2) return;
+      cancelAnimationFrame(glideRaf); glideTo = top;
+      const from = list.scrollTop, t0 = performance.now(), D = 320;
+      const step = (now) => {
+        const k = Math.min(1, (now - t0) / D), e = 1 - (1 - k) ** 3;
+        list.scrollTop = from + (top - from) * e;
+        if (k < 1) glideRaf = requestAnimationFrame(step); else glideTo = -1;
+      };
+      glideRaf = requestAnimationFrame(step);
+    }
     for (const ev of ['touchstart', 'touchmove', 'wheel', 'pointerdown']) list.addEventListener(ev, byHand, { passive: true });
     list.addEventListener('click', (e) => {
       const el = e.target.closest('.ly-line'); if (!el || el.dataset.t == null) return;
@@ -384,7 +383,7 @@ W.lyrics = {
       if (hand) return;
       // the line being sung goes to the middle
       const el = lines[Math.max(0, i)].el;
-      list.scrollTo({ top: Math.max(0, el.offsetTop + el.offsetHeight / 2 - list.clientHeight / 2), behavior: 'smooth' });
+      glide(Math.max(0, Math.min(list.scrollHeight - list.clientHeight, el.offsetTop + el.offsetHeight / 2 - list.clientHeight / 2)));
     }
     async function poll() {
       if (!alive) return;
