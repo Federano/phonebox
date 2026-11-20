@@ -61,3 +61,27 @@ test('nothing playing', async ({ page }) => {
   await open(page, { playing: false });
   await expect(page.locator('.ly-title')).toHaveText('Nada tocando no PC');
 });
+
+test('controls drive the PC player and a tapped line jumps there', async ({ page }) => {
+  await open(page, SONG);
+  await expect(page.locator('.ly-line')).toHaveCount(4);
+  await page.evaluate(() => {
+    window.__posts = [];
+    const f = window.fetch;
+    window.fetch = (url, init) => {
+      if (init && init.method === 'POST' && String(url).includes('/media/')) {
+        window.__posts.push(String(url).replace(/^.*\/api/, ''));
+        return Promise.resolve(new Response(JSON.stringify({ ok: true }), { headers: { 'Content-Type': 'application/json' } }));
+      }
+      return f(url, init);
+    };
+  });
+  await page.locator('.ly-play').click();
+  await page.locator('.ly-back').click();
+  await page.locator('.ly-fwd').click();
+  await page.locator('.ly-next').click();
+  await page.locator('.ly-prev').click();
+  await page.locator('.ly-line', { hasText: "I'm a lover" }).click();
+  const posts = await page.evaluate(() => window.__posts);
+  expect(posts).toEqual(['/media/playpause', '/media/seekby?ms=-10000', '/media/seekby?ms=10000', '/media/next', '/media/prev', '/media/seek?ms=19800']);
+});

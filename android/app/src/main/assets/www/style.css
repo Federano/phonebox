@@ -1430,3 +1430,12 @@ body.controls-top .ap-foot { order: -1; margin-bottom: 4px; }
 .w.ly.ly-noart .ly-side { background: linear-gradient(135deg, rgba(255, 255, 255, .06), transparent); }
 .w.ly.ly-idle .ly-words { display: none; } .w.ly.ly-idle { grid-template-columns: 1fr; }
 .w.ly.ly-paused .ly-line.on { color: rgba(255, 255, 255, .7); }
+/* lyrics page controls */
+.ly-ctl { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: clamp(8px, 2.5cqmin, 16px); max-width: 420px; }
+.ly-btn { width: clamp(38px, 9cqmin, 54px); height: clamp(38px, 9cqmin, 54px); border-radius: 50%; color: #fff; display: grid; place-items: center; background: rgba(255, 255, 255, .1); }
+.ly-btn svg { width: 55%; height: 55%; }
+.ly-btn:active { transform: scale(.92); background: rgba(255, 255, 255, .22); }
+.ly-btn.ly-play { width: clamp(50px, 12cqmin, 70px); height: clamp(50px, 12cqmin, 70px); background: #fff; color: #111; }
+.ly-bar { cursor: pointer; height: 6px; }
+.ly-line { cursor: pointer; }
+.ly-line:active { color: rgba(255, 255, 255, .8); }
