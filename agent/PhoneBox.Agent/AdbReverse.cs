@@ -45,6 +45,7 @@ public sealed class AdbReverse(ConfigStore cfg, ILogger<AdbReverse> log, AgentEn
 
     internal static void MarkSessionEnding() => Interlocked.Exchange(ref _endingSince, Math.Max(1, Clock()));
     internal static Func<long> Clock { get; set; } = () => Environment.TickCount64;
+    private long _lastServerRestart = long.MinValue / 2;
     internal const long EndingWindowMs = 60_000;
     internal static void ResetSessionEnding() => Interlocked.Exchange(ref _endingSince, 0); // tests
     private static long _endingSince;
@@ -126,6 +127,14 @@ public sealed class AdbReverse(ConfigStore cfg, ILogger<AdbReverse> log, AgentEn
             _lastProblem = problem;
             if (problem is not null) log.LogWarning("USB: {Problem}", problem);
             if (problem is null && devices.Length > 0) log.LogInformation("USB: the phone is back on USB");
+        }
+        // Federano: the phone says it is on USB but adb does not see it: the adb server may have been started without
+        // the libusb backend (by another program); restart it once in a while so the next call starts it with libusb
+        if (problem is not null && devices.Length == 0 && OperatingSystem.IsWindows() && Clock() - _lastServerRestart > 5 * 60_000)
+        {
+            _lastServerRestart = Clock();
+            log.LogInformation("USB: restarting the adb server with the libusb backend");
+            try { await Adb(adb, "kill-server", ct, anyExit: true); } catch (IOException) { }
         }
         _missingApp = _missingApp.Where(devices.Contains).ToArray();
         if (devices.Length == 0) { Report("no phone connected, waiting..."); return; }
@@ -249,6 +258,9 @@ public sealed class AdbReverse(ConfigStore cfg, ILogger<AdbReverse> log, AgentEn
             RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true,
             WorkingDirectory = AppPaths.NeutralCwd,
         };
+        // Federano: on Windows adb's own USB backend can miss a tablet that Windows sees fine (an "ADB Interface" with
+        // WinUSB, yet "adb devices" empty); the libusb backend finds it. Only matters when this call starts the server.
+        if (OperatingSystem.IsWindows()) psi.Environment["ADB_LIBUSB"] = "1";
         var result = await ToolProcess.RunAsync(psi, TimeSpan.FromSeconds(8), ct);
         if (result.ExitCode != 0 && !anyExit) throw new IOException($"ADB exited with code {result.ExitCode}");
         return result.Output;

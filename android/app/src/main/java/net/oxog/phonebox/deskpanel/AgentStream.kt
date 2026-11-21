@@ -73,7 +73,7 @@ class AgentStream(private val link: AgentLink, private val deliver: (event: Stri
                 reply.body.bufferedReader(Charsets.UTF_8).use { r ->
                     if (!alive()) return@use
                     dispatch(gen, "open", "{\"route\":\"${route.name.lowercase()}\"}")
-                    val since = System.currentTimeMillis()
+                    var since = System.currentTimeMillis()
                     var event = "message"
                     val data = StringBuilder()
                     while (alive()) {
@@ -84,7 +84,12 @@ class AgentStream(private val link: AgentLink, private val deliver: (event: Stri
                                 if (data.isNotEmpty()) dispatch(gen, event, data.toString())
                                 event = "message"
                                 data.setLength(0)
-                                if (route == AgentLink.Route.WIFI && System.currentTimeMillis() - since > 60_000) break
+                                // on Wi-Fi, look once a minute whether USB came back (it is faster); only then reconnect,
+                                // instead of dropping a working Wi-Fi stream every minute (events in the gap were lost)
+                                if (route == AgentLink.Route.WIFI && System.currentTimeMillis() - since > 60_000) {
+                                    if (link.usbUp()) break
+                                    since = System.currentTimeMillis()
+                                }
                             }
                             line.startsWith("event:") -> event = line.substring(6).trim()
                             line.startsWith("data:") -> data.append(line.substring(5).trimStart())

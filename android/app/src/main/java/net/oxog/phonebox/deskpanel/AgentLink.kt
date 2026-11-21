@@ -132,6 +132,13 @@ class AgentLink(private val context: Context) {
         return null
     }
 
+    /** Federano: is the USB route (the agent's adb reverse tunnel) up right now? A bare connect, refused at once when not. */
+    fun usbUp(): Boolean = try {
+        java.net.Socket().use { it.connect(java.net.InetSocketAddress("127.0.0.1", URL(USB_BASE).port), 300); true }
+    } catch (e: Exception) {
+        false
+    }
+
     /** Forwards a request (method + path with query) to the agent over the best available route. */
     fun request(method: String, pathAndQuery: String): Reply = request(method, pathAndQuery, null, null)
 
