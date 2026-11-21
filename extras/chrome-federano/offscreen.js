@@ -42,7 +42,8 @@ async function start(streamId, tab, rect) {
     }
   };
   probe();
-  let canvas = null, ctx = null, busy = false, last = 0;
+  // Federano: two frames can be encoding at once (two workers), so a slow encode no longer halves the frame rate
+  let canvas = null, ctx = null, busy = 0, last = 0;
   // measurements, sent with the frames so the agent can log where time goes
   let got = 0, sent = 0, encMs = 0, postMs = 0, statFrom = performance.now(), stats = '';
   while (session === s) {
@@ -59,8 +60,10 @@ async function start(streamId, tab, rect) {
       got = 0; sent = 0; encMs = 0; postMs = 0; statFrom = now;
     }
     // wait (up to 2 s) for the video rectangle so the tablet never shows the whole page
-    if (busy || now - last < 1000 / FPS || (!s.rect && now - s.started < 2000)) { frame.close(); continue; }
-    last = now; busy = true;
+    // a few ms of slack: the tab sends ~30 frames a second with jitter, and a frame 1 ms early must not be dropped
+    if (busy >= 2 || now - last < 1000 / FPS - 6 || (!s.rect && now - s.started < 2000)) { frame.close(); continue; }
+    last = now; busy++;
+    const mySeq = ++frameSeq;   // counts on across sessions, like sentSeq
     try {
       const fw = frame.displayWidth, fh = frame.displayHeight;
       // Chrome fits the tab into the captured frame keeping its shape (black bars around it when the shapes differ):
@@ -75,14 +78,20 @@ async function start(streamId, tab, rect) {
       const scale = Math.min(1, MAX_W / sw);
       const w = Math.max(2, Math.round(sw * scale)), h = Math.max(2, Math.round(sh * scale));
       const t0 = performance.now();
-      const jpeg = await encode(frame, sx, sy, sw, sh, w, h);   // the worker closes the frame
-      encMs += performance.now() - t0; sent++;
-      // the send runs in parallel with the next encode; only the newest frame waits for the link
-      send(s, `${AGENT}/mirror/push?tab=${tab}&ts=${ts}${stats}`, jpeg, (ms) => { postMs += ms; });
-      stats = '';
+      const st = stats; stats = '';
+      // not awaited: the next frame starts encoding in the other worker meanwhile
+      encode(frame, sx, sy, sw, sh, w, h).then((jpeg) => {   // the worker closes the frame
+        encMs += performance.now() - t0; sent++;
+        // a frame that finished after a newer one is stale: drop it
+        if (mySeq < sentSeq) return;
+        sentSeq = mySeq;
+        // the send runs in parallel with the next encode; only the newest frame waits for the link
+        send(s, `${AGENT}/mirror/push?tab=${tab}&ts=${ts}${st}`, jpeg, (ms) => { postMs += ms; });
+      }).catch(() => {}).finally(() => { busy--; });
     } catch (_) {
       try { frame.close(); } catch (__) {}
-    } finally { busy = false; }
+      busy--;
+    }
   }
   if (session === s) stop();
 }
@@ -109,19 +118,22 @@ function send(s, url, body, onDone) {
 }
 
 // JPEG encoding in a worker: in this background page Chrome delays canvas encoding by about a second per frame
-let worker = null, nextId = 0;
+let workers = [], nextId = 0, sentSeq = 0, frameSeq = 0;
 const pending = new Map();
 function encode(frame, sx, sy, sw, sh, w, h) {
-  if (!worker) {
-    worker = new Worker('encoder.js');
-    worker.onmessage = (e) => {
-      const p = pending.get(e.data.id);
-      if (!p) return;
-      pending.delete(e.data.id);
-      if (e.data.error) p.reject(new Error(e.data.error)); else p.resolve(e.data.buf);
-    };
+  if (!workers.length) {
+    for (let i = 0; i < 2; i++) {
+      const wk = new Worker('encoder.js');
+      wk.onmessage = (e) => {
+        const p = pending.get(e.data.id);
+        if (!p) return;
+        pending.delete(e.data.id);
+        if (e.data.error) p.reject(new Error(e.data.error)); else p.resolve(e.data.buf);
+      };
+      workers.push(wk);
+    }
   }
-  const id = ++nextId;
+  const id = ++nextId, worker = workers[id % workers.length];
   return new Promise((resolve, reject) => {
     pending.set(id, { resolve, reject });
     worker.postMessage({ id, frame, sx, sy, sw, sh, w, h, quality: QUALITY }, [frame]);
