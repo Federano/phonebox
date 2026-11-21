@@ -244,3 +244,44 @@ test('a podcast episode gets its own screen: show, episode, date, description, 1
   await page.screenshot({ path: test.info().outputPath('podcast.png') });
   expect(errors).toEqual([]);
 });
+
+test('shuffle, like and repeat follow Spotify and a playlist can be picked', async ({ page }) => {
+  await open(page, SONG);
+  await page.evaluate(() => {
+    window.__sp = [];
+    const st = { connected: true, shuffle: false, repeat: 'off', liked: false };
+    const lists = { connected: true, items: [{ id: 'spotify:playlist:37i9dQZF1DXcBWIGoYBM5M', name: 'Rock Nacional', owner: 'Federano', tracks: 42, image: null }] };
+    const prev = window.fetch;
+    window.fetch = (url, init) => {
+      const u = String(url);
+      const json = (o) => Promise.resolve(new Response(JSON.stringify(o), { headers: { 'Content-Type': 'application/json' } }));
+      if (u.includes('/controls/spotify/player')) return json(st);
+      if (u.includes('/controls/spotify/playlists')) return json(lists);
+      if (u.includes('/controls/spotify/action/')) {
+        const a = u.replace(/^.*\/action\//, '');
+        window.__sp.push(a);
+        if (a === 'shuffle') st.shuffle = !st.shuffle;
+        if (a === 'like') st.liked = !st.liked;
+        if (a === 'repeat') st.repeat = st.repeat === 'off' ? 'context' : st.repeat === 'context' ? 'track' : 'off';
+        return json({ ok: true });
+      }
+      return prev(url, init);
+    };
+  });
+  await expect(page.locator('.ly-title')).toHaveText('Life Goes On');
+  await page.locator('.ly-shuf').click();
+  await expect(page.locator('.ly-shuf')).toHaveClass(/on/);
+  await page.locator('.ly-like').click();
+  await expect(page.locator('.ly-like')).toHaveAttribute('aria-label', 'Descurtir');
+  await page.locator('.ly-rep').click();
+  await page.locator('.ly-rep').click();
+  await expect(page.locator('.ly-rep')).toHaveAttribute('aria-label', 'Repetindo esta música');
+  await page.locator('.ly-lists').click();
+  await expect(page.locator('.ly-prow')).toHaveCount(1);
+  await expect(page.locator('.ly-prow small')).toHaveText('Federano · 42 músicas');
+  await page.screenshot({ path: test.info().outputPath('playlists.png') });
+  await page.locator('.ly-prow').click();
+  await expect(page.locator('.ly-sheet')).toBeHidden();
+  expect(await page.evaluate(() => window.__sp)).toEqual(['shuffle', 'like', 'repeat', 'repeat', 'play-playlist?id=spotify%3Aplaylist%3A37i9dQZF1DXcBWIGoYBM5M']);
+  await page.screenshot({ path: test.info().outputPath('modes.png') });
+});

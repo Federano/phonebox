@@ -1,0 +1,7 @@
+{
+  // Federano: "curte essa", "curtir", "gostei dessa música": salva a música tocando nas Músicas Curtidas do Spotify
+  "name": "Curtir no Spotify",
+  "triggers": ["curtir", "curte", "curte essa", "curtir essa musica", "curte essa musica", "gostei dessa", "gostei dessa musica", "salva essa musica", "salvar essa musica", "favorita essa"],
+  "action": "spotify.like",
+  "value": "on"
+}

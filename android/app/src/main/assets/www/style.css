@@ -1517,3 +1517,26 @@ body.controls-top .ap-foot { order: -1; margin-bottom: 4px; }
 @keyframes ly-breathe { from { opacity: .3; } to { opacity: .85; } }
 .w.ly.ly-paused .ly-vig { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) { .ly-bgphoto, .ly-vig { animation: none; } .ly-inner { transition: none !important; } }
+/* lyrics page: Spotify's shuffle / like / repeat and the playlist picker */
+.ly-ctl2 { display: flex; justify-content: space-between; gap: 4px; padding: 0 clamp(2px, 1cqmin, 8px); }
+.ly-btn.ly-mini { width: clamp(30px, 6.6cqmin, 38px); height: clamp(30px, 6.6cqmin, 38px); background: transparent; color: rgba(255, 255, 255, .62); }
+.ly-btn.ly-mini.on { color: var(--ly-accent, #1ed760); }
+.ly-btn.ly-mini.on::after { content: ""; position: absolute; bottom: 1px; width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
+.ly-btn.ly-mini { position: relative; }
+.w.ly.ly-idle .ly-ctl2 { visibility: hidden; }
+.ly-card { position: relative; }
+.ly-sheet { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; gap: 8px; padding: clamp(12px, 3cqmin, 22px) clamp(12px, 2.6cqmin, 20px);
+  background: color-mix(in srgb, var(--ly-card, #000) 92%, #000); }
+.ly-sheet[hidden] { display: none; }
+.ly-shead { display: flex; align-items: center; justify-content: space-between; }
+.ly-shead b { font-size: 13px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: color-mix(in srgb, var(--ly-accent, #fff) 80%, white); }
+.ly-pclose { width: 36px; height: 36px; border-radius: 50%; font-size: 24px; line-height: 1; color: #fff; background: rgba(255, 255, 255, .1); }
+.ly-pnote { font-size: 13px; color: rgba(255, 255, 255, .6); }
+.ly-pnote:empty { display: none; }
+.ly-plist { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; scrollbar-width: none; }
+.ly-prow { display: flex; align-items: center; gap: 10px; padding: 6px; border-radius: 10px; text-align: left; min-width: 0; color: #fff; }
+.ly-prow:active { background: rgba(255, 255, 255, .12); }
+.ly-pimg { width: 44px; height: 44px; border-radius: 6px; flex: none; background: rgba(255, 255, 255, .1) center / cover no-repeat; }
+.ly-prow span { display: flex; flex-direction: column; min-width: 0; }
+.ly-prow b { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ly-prow small { font-size: 12px; color: rgba(255, 255, 255, .55); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

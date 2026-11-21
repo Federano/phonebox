@@ -1,0 +1,6 @@
+{
+  "name": "Repetir a playlist",
+  "triggers": ["repetir playlist", "repete a playlist", "repetir a playlist", "repetir o album", "repete o album"],
+  "action": "spotify.repeat",
+  "value": "context"
+}

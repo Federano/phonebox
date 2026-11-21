@@ -1,0 +1,6 @@
+{
+  "name": "Parar de repetir",
+  "triggers": ["parar de repetir", "para de repetir", "desliga a repeticao", "sem repetir", "nao repete"],
+  "action": "spotify.repeat",
+  "value": "off"
+}

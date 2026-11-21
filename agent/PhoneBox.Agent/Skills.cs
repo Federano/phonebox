@@ -26,6 +26,9 @@ public sealed record SkillDef
     public bool Query { get; init; }
     /// <summary>panel.page: the page the tablet shows (its id or title; "lyrics" = the page with the lyrics widget).</summary>
     public string Page { get; init; } = "";
+    /// <summary>Federano, spotify.shuffle / spotify.repeat: the mode to set ("on"/"off"; "track"/"context"/"off");
+    /// empty = switch to the next one.</summary>
+    public string Value { get; init; } = "";
     /// <summary>Answer; {title}, {artist}, {album}, {app}, {state} are filled from the media playing on the PC
     /// ({volume} after a volume action).</summary>
     public string Reply { get; init; } = "";
@@ -87,6 +90,31 @@ public sealed class SkillEngine(ILogger<SkillEngine> log, MediaMonitor media, Yo
                 var vals = new Dictionary<string, string> { ["title"] = r.Title, ["artist"] = r.Artist, ["kind"] = KindName(kind) };
                 var reply = skill.Reply.Length > 0 ? Fill(skill.Reply, vals) : $"Tocando \"{r.Title}\" no Spotify.";
                 return new(true, skill.Id, reply);
+            }
+            case "spotify.queue":
+            {
+                if (query is not { } q2) return new(false, skill.Id, "Fale o que pôr na fila, por exemplo: adiciona na fila Evidências.");
+                var what2 = ParseMusic(q2.Query).Item2;
+                if (what2.Length == 0) return new(false, skill.Id, "Fale o nome da música.");
+                var r2 = await spotify.QueueSearch(what2, CancellationToken.None);
+                if (!r2.Ok) return new(false, skill.Id, r2.Message);
+                var vals2 = new Dictionary<string, string> { ["title"] = r2.Title, ["artist"] = r2.Artist };
+                return new(true, skill.Id, skill.Reply.Length > 0 ? Fill(skill.Reply, vals2) : $"\"{r2.Title}\" vai tocar depois.");
+            }
+            case "spotify.like" or "spotify.shuffle" or "spotify.repeat":
+            {
+                var act = skill.Action["spotify.".Length..];
+                var res = await spotify.Act(act, skill.Value.Length > 0 ? skill.Value : null, CancellationToken.None);
+                if (!res.Ok) return new(false, skill.Id, res.Error is { Length: > 0 } msg && msg.Contains("HTTP 403")
+                    ? "O Spotify recusou (precisa de Spotify Premium, e talvez reconectar o Spotify nas configurações)." : "Não consegui falar com o Spotify agora.");
+                var st = await spotify.PlayerState(CancellationToken.None);
+                var reply = act switch
+                {
+                    "like" => "Música curtida no Spotify.",
+                    "shuffle" => st["shuffle"]?.GetValue<bool>() == true ? "Modo aleatório ligado." : "Modo aleatório desligado.",
+                    _ => (st["repeat"]?.GetValue<string>() ?? "off") switch { "track" => "Repetindo esta música.", "context" => "Repetindo a playlist.", _ => "Repetição desligada." },
+                };
+                return new(true, skill.Id, skill.Reply.Length > 0 ? skill.Reply : reply);
             }
             case "media.now":
                 return Answer(skill, media.Snapshot());

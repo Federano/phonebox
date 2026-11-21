@@ -1,0 +1,7 @@
+{
+  // Federano: "repete essa música", "repetir": repete a música tocando
+  "name": "Repetir a música",
+  "triggers": ["repetir", "repete", "repete essa", "repetir essa musica", "repete essa musica", "repetir musica"],
+  "action": "spotify.repeat",
+  "value": "track"
+}

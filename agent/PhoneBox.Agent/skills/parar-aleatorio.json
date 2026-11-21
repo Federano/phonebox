@@ -1,0 +1,6 @@
+{
+  "name": "Desligar aleatório",
+  "triggers": ["desliga o aleatorio", "desligar aleatorio", "tira o aleatorio", "sem aleatorio", "para o aleatorio"],
+  "action": "spotify.shuffle",
+  "value": "off"
+}

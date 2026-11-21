@@ -1,0 +1,8 @@
+{
+  // Federano: "adiciona na fila Evidências", "põe na fila Garota de Ipanema": a música entra no fim da fila do Spotify
+  "name": "Adicionar na fila",
+  "query": true,
+  "triggers": ["adiciona na fila", "adicionar na fila", "coloca na fila", "poe na fila", "bota na fila"],
+  "action": "spotify.queue",
+  "reply": "\"{title}\"[ de {artist}] entrou na fila."
+}

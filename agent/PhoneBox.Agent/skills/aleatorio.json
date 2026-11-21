@@ -1,0 +1,6 @@
+{
+  // Federano: "aleatório", "modo aleatório": liga ou desliga o aleatório do Spotify
+  "name": "Aleatório",
+  "triggers": ["aleatorio", "modo aleatorio", "embaralha", "embaralhar", "shuffle", "toca aleatorio"],
+  "action": "spotify.shuffle"
+}

@@ -87,7 +87,7 @@ public static class Lan
 
     /// <summary>Endpoints the phone may use over Wi-Fi. Settings, tests and pairing stay local-only.</summary>
     public static bool AllowedOverLan(PathString path) =>
-        path == "/api/controls/spotify/state" || path.StartsWithSegments("/api/controls/spotify/action")
+        path == "/api/controls/spotify/state" || path == "/api/controls/spotify/player" || path == "/api/controls/spotify/playlists" || path.StartsWithSegments("/api/controls/spotify/action")
         || path == "/api/controls/state" || path == "/api/controls/listen" || path.StartsWithSegments("/api/controls/radio-logo") || path.StartsWithSegments("/api/controls/command") || path.StartsWithSegments("/api/controls/obs")
         || path.StartsWithSegments("/api/state") || path.StartsWithSegments("/api/config") || path.StartsWithSegments("/api/art")
         || path.StartsWithSegments("/api/media") || path.StartsWithSegments("/api/volume") || path.StartsWithSegments("/api/quotas")

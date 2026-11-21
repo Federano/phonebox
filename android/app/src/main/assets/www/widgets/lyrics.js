@@ -130,6 +130,12 @@ const SVG = {
   back: '<svg viewBox="0 0 24 24"><path d="M12 5a7 7 0 1 1-6.6 9.3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 2.2v5.6L8.2 5z" fill="currentColor"/><text x="12" y="15.6" text-anchor="middle" font-size="6.6" font-weight="700" fill="currentColor" font-family="system-ui,sans-serif">10</text></svg>',
   fwd: '<svg viewBox="0 0 24 24"><path d="M12 5a7 7 0 1 0 6.6 9.3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 2.2v5.6L15.8 5z" fill="currentColor"/><text x="12" y="15.6" text-anchor="middle" font-size="6.6" font-weight="700" fill="currentColor" font-family="system-ui,sans-serif">10</text></svg>',
   prev: '<svg viewBox="0 0 24 24"><path d="M18 5.5v13l-9-6.5z" fill="currentColor"/><rect x="5.4" y="5.5" width="2.6" height="13" rx="1" fill="currentColor"/></svg>',
+  heart: '<svg viewBox="0 0 24 24"><path d="M12 20.3s-7.3-4.4-7.3-10A4.2 4.2 0 0 1 12 7.6a4.2 4.2 0 0 1 7.3 2.7c0 5.6-7.3 10-7.3 10z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
+  heartOn: '<svg viewBox="0 0 24 24"><path d="M12 20.3s-7.3-4.4-7.3-10A4.2 4.2 0 0 1 12 7.6a4.2 4.2 0 0 1 7.3 2.7c0 5.6-7.3 10-7.3 10z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
+  shuffle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h3.5c4 0 5 10 9 10H20M17 14l3 3-3 3M4 17h3.5c1.4 0 2.4-1.2 3.2-2.8M14 9.2c.7-1.3 1.6-2.2 2.9-2.2H20M17 4l3 3-3 3"/></svg>',
+  repeat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3l3 3-3 3M4 11V9a3 3 0 0 1 3-3h13M7 21l-3-3 3-3M20 13v2a3 3 0 0 1-3 3H4"/></svg>',
+  repeatOne: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3l3 3-3 3M4 11V9a3 3 0 0 1 3-3h13M7 21l-3-3 3-3M20 13v2a3 3 0 0 1-3 3H4"/><text x="12" y="14.6" text-anchor="middle" font-size="7" font-weight="800" fill="currentColor" stroke="none" font-family="system-ui,sans-serif">1</text></svg>',
+  lists: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h11M4 11h11M4 16h7"/><circle cx="17.5" cy="17" r="2.5"/><path d="M20 17V8.5l2 .8"/></svg>',
   next: '<svg viewBox="0 0 24 24"><path d="M6 5.5v13l9-6.5z" fill="currentColor"/><rect x="16" y="5.5" width="2.6" height="13" rx="1" fill="currentColor"/></svg>',
 };
 
@@ -164,6 +170,13 @@ W.lyrics = {
     const bBack = btn('ly-back', SVG.back, 'Voltar 10 segundos'), bPrev = btn('ly-prev', SVG.prev, 'Música anterior');
     const bPlay = btn('ly-play', SVG.pause, 'Play / pausa'), bNext = btn('ly-next', SVG.next, 'Próxima música'), bFwd = btn('ly-fwd', SVG.fwd, 'Avançar 10 segundos');
     const ctl = h('div', 'ly-ctl', bBack, bPrev, bPlay, bNext, bFwd);
+    // Federano: Spotify's shuffle, like and repeat, and the playlist picker (only while Spotify plays)
+    const bShuf = btn('ly-mini ly-shuf', SVG.shuffle, 'Aleatório'), bLike = btn('ly-mini ly-like', SVG.heart, 'Curtir');
+    const bRep = btn('ly-mini ly-rep', SVG.repeat, 'Repetir'), bLists = btn('ly-mini ly-lists', SVG.lists, 'Suas playlists');
+    const ctl2 = h('div', 'ly-ctl2', bShuf, bLike, bRep, bLists);
+    const plList = h('div', 'ly-plist'), plNote = h('div', 'ly-pnote', '');
+    const plClose = h('button', 'ly-pclose', '×'); plClose.setAttribute('aria-label', 'Fechar');
+    const sheet = h('div', 'ly-sheet', h('div', 'ly-shead', h('b', null, 'Suas playlists'), plClose), plNote, plList); sheet.hidden = true;
     const inner = h('div', 'ly-inner');
     const list = h('div', 'ly-lines', inner);
     // podcast episode: show, episode name, date / length / publisher and the description, where the lyrics go
@@ -248,7 +261,7 @@ W.lyrics = {
     if (!matchMedia('(prefers-reduced-motion: reduce)').matches) raf = requestAnimationFrame(animate);
     box.append(
       h('div', 'ly-main', bgPhoto, h('div', 'ly-bgveil'), fx, vig, h('div', 'ly-top', chip, h('div', 'ly-topr', trBtn, fsBtn)), h('div', 'ly-words', list, note, pod)),
-      h('div', 'ly-card', h('div', 'ly-pic', img), h('div', 'ly-meta', title, artist), h('div', 'ly-prog', bar, times), ctl, qHead, queue));
+      h('div', 'ly-card', h('div', 'ly-pic', img), h('div', 'ly-meta', title, artist), h('div', 'ly-prog', bar, times), ctl, ctl2, qHead, queue, sheet));
     // the next songs; tapping one plays it (Spotify connected in the settings)
     let qKey = '', lastQueue = [];
     function fillQueue(items, nowTitle) {
@@ -320,6 +333,66 @@ W.lyrics = {
     bFwd.onclick = () => media('seekby', `?ms=${fwdMs}`, () => jumpTo(pos() + fwdMs));
     bPrev.onclick = () => media('prev');
     bNext.onclick = () => media('next');
+    // ---- Spotify modes: the state comes from the agent (Spotify's own), a tap changes it and shows it at once
+    let pState = null;
+    const showModes = () => {
+      const st = pState || {};
+      bShuf.classList.toggle('on', !!st.shuffle);
+      bRep.classList.toggle('on', st.repeat === 'track' || st.repeat === 'context');
+      bRep.innerHTML = st.repeat === 'track' ? SVG.repeatOne : SVG.repeat;
+      bRep.setAttribute('aria-label', st.repeat === 'track' ? 'Repetindo esta música' : st.repeat === 'context' ? 'Repetindo a playlist' : 'Repetir');
+      bLike.classList.toggle('on', st.liked === true);
+      bLike.innerHTML = st.liked === true ? SVG.heartOn : SVG.heart;
+      bLike.setAttribute('aria-label', st.liked === true ? 'Descurtir' : 'Curtir');
+    };
+    async function loadModes() {
+      try {
+        const r = await fetch(`${API}/controls/spotify/player`, { cache: 'no-store', headers: PANEL_HEADERS });
+        const j = await r.json();
+        if (j && j.connected) { pState = j; showModes(); }
+      } catch (_) {}
+    }
+    async function spAct(action, optimistic) {
+      haptic();
+      if (pState && optimistic) { optimistic(pState); showModes(); }
+      try {
+        const r = await fetch(`${API}/controls/spotify/action/${action}`, { method: 'POST', cache: 'no-store', headers: PANEL_HEADERS });
+        const j = await r.json();
+        if (j && j.ok === false) toast(/403/.test(j.error || '') ? 'O Spotify recusou: reconecte o Spotify nas configurações do PC.' : (j.error || 'O Spotify não respondeu.'), 'err');
+      } catch (_) { toast('Sem conexão com o PC.', 'err'); }
+      setTimeout(loadModes, 600);
+    }
+    bShuf.onclick = () => spAct('shuffle', (st) => { st.shuffle = !st.shuffle; });
+    bRep.onclick = () => spAct('repeat', (st) => { st.repeat = st.repeat === 'off' ? 'context' : st.repeat === 'context' ? 'track' : 'off'; });
+    bLike.onclick = () => spAct('like', (st) => { st.liked = !st.liked; });
+    // ---- the playlist picker: the account's playlists over the card; a tap plays one
+    async function openLists() {
+      haptic(); sheet.hidden = false; plNote.textContent = 'Carregando…'; plList.replaceChildren();
+      try {
+        const r = await fetch(`${API}/controls/spotify/playlists`, { cache: 'no-store', headers: PANEL_HEADERS });
+        const j = await r.json();
+        if (!j || !j.connected) { plNote.textContent = j && j.reconnect ? 'Reconecte o Spotify nas configurações do PC para ver suas playlists.' : 'O Spotify não respondeu.'; return; }
+        plNote.textContent = j.items.length ? '' : 'Nenhuma playlist na sua conta.';
+        plList.replaceChildren(...j.items.map((pl) => {
+          const pic = h('i', 'ly-pimg');
+          if (pl.image) pic.style.backgroundImage = `url("${String(pl.image).replace(/"/g, '')}")`;
+          const row = h('button', 'ly-prow', pic, h('span', null, h('b', null, pl.name), h('small', null, [pl.owner, pl.tracks != null ? `${pl.tracks} músicas` : ''].filter(Boolean).join(' · '))));
+          row.onclick = async () => {
+            haptic();
+            try {
+              const r2 = await fetch(`${API}/controls/spotify/action/play-playlist?id=${encodeURIComponent(pl.id)}`, { method: 'POST', cache: 'no-store', headers: PANEL_HEADERS });
+              const j2 = await r2.json();
+              if (j2 && j2.ok === false) toast(j2.error || 'O Spotify não tocou essa playlist.', 'err');
+              else { sheet.hidden = true; toast(`Tocando "${pl.name}"`); }
+            } catch (_) { toast('Sem conexão com o PC.', 'err'); }
+            setTimeout(() => { clearTimeout(timer); poll(); }, 1200);
+          };
+          return row;
+        }));
+      } catch (_) { plNote.textContent = 'Sem conexão com o PC.'; }
+    }
+    bLists.onclick = openLists;
+    plClose.onclick = () => { haptic(); sheet.hidden = true; };
     const setPod = (on) => {
       podMode = on; box.classList.toggle('ly-podcast', on); pod.hidden = !on;
       setSkips(on ? 15000 : 10000, on ? 30000 : 10000);
@@ -448,7 +521,7 @@ W.lyrics = {
             offset = Number(j.posOffsetMs) || 0;
             lastArtistPending = !!j.artistPending;
             title.textContent = m.title; artist.textContent = [m.artist, m.album].filter(Boolean).join(' · ');
-            if (m.app === 'Spotify') fillQueue(j.queue, m.title); else { lastQueue = []; fillQueue([]); }
+            if (m.app === 'Spotify') { fillQueue(j.queue, m.title); if (visible()) loadModes(); } else { lastQueue = []; fillQueue([]); }
             chip.textContent = `● ${m.app || 'PC'} · ${m.playing ? 'tocando' : 'pausado'}`;
             total.textContent = m.durMs > 0 ? clock(m.durMs) : '';
             showPlay();

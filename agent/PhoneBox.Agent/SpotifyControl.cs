@@ -48,7 +48,8 @@ public sealed class SpotifyControl : IDisposable
         {
             ["client_id"] = client, ["response_type"] = "code", ["redirect_uri"] = RedirectUri, ["state"] = pending.State,
             ["code_challenge_method"] = "S256", ["code_challenge"] = Base64(SHA256.HashData(Encoding.ASCII.GetBytes(pending.Verifier))),
-            ["scope"] = "user-read-playback-state user-read-currently-playing user-modify-playback-state user-library-modify",
+            // Federano: + reading the library (is this song liked?) and the playlists (pick one on the tablet)
+            ["scope"] = "user-read-playback-state user-read-currently-playing user-modify-playback-state user-library-modify user-library-read playlist-read-private playlist-read-collaborative",
         };
         return "https://accounts.spotify.com/authorize?" + string.Join('&', query.Select(p => Uri.EscapeDataString(p.Key) + "=" + Uri.EscapeDataString(p.Value)));
     }
@@ -250,6 +251,44 @@ public sealed class SpotifyControl : IDisposable
                 if (uri is null || !PlaybackUri(uri)) return new(false, "No Spotify item is playing");
                 await Request(HttpMethod.Put, "me/library?uris=" + Uri.EscapeDataString(uri), null, ct);
             }
+            else if (action == "like")
+            {
+                // Federano: like / unlike the song playing (a heart on the lyrics page, "curtir" by voice)
+                var state = await Snapshot(ct); var uri = state["current"]?["id"]?.GetValue<string>();
+                if (uri is null || !PlaybackUri(uri)) return new(false, "No Spotify item is playing");
+                var liked = await Liked(uri, ct);
+                await Request(liked == true && id != "on" ? HttpMethod.Delete : HttpMethod.Put, "me/library?uris=" + Uri.EscapeDataString(uri), null, ct);
+                _player = null;
+            }
+            else if (action == "shuffle")
+            {
+                var p = await Request(HttpMethod.Get, "me/player", null, ct);
+                var on = id is "on" or "off" ? id == "on" : !(p?["shuffle_state"]?.GetValue<bool>() ?? false);
+                await Request(HttpMethod.Put, "me/player/shuffle?state=" + (on ? "true" : "false") + DeviceQuery().Replace('?', '&'), null, ct);
+                _player = null;
+            }
+            else if (action == "repeat")
+            {
+                // off -> the whole list -> this song -> off
+                var p = await Request(HttpMethod.Get, "me/player", null, ct);
+                var cur = p?["repeat_state"]?.GetValue<string>() ?? "off";
+                var next = id is "off" or "context" or "track" ? id : cur == "off" ? "context" : cur == "context" ? "track" : "off";
+                await Request(HttpMethod.Put, "me/player/repeat?state=" + next + DeviceQuery().Replace('?', '&'), null, ct);
+                _player = null;
+            }
+            else if (action == "play-playlist")
+            {
+                // only one of the account's own playlists (the list the tablet was shown)
+                var lists = await Playlists(ct);
+                if (id is null || !PlaybackUri(id) || lists["items"] is not JsonArray items || !items.Any(i => i?["id"]?.GetValue<string>() == id))
+                    return new(false, "That playlist is not in your library");
+                await Request(HttpMethod.Put, "me/player/play" + DeviceQuery(), new JsonObject { ["context_uri"] = id }, ct);
+            }
+            else if (action == "add-queue")
+            {
+                if (id is null || !PlaybackUri(id) || !id.StartsWith("spotify:track:", StringComparison.Ordinal)) return new(false, "Not a Spotify song");
+                await Request(HttpMethod.Post, "me/player/queue?uri=" + Uri.EscapeDataString(id) + DeviceQuery().Replace('?', '&'), null, ct);
+            }
             else if (action == "play-queued")
             {
                 var state = await Snapshot(ct);
@@ -274,6 +313,72 @@ public sealed class SpotifyControl : IDisposable
         catch (Exception ex) when (ex is IOException or HttpRequestException or JsonException or OperationCanceledException)
         { return new(false, ex is IOException ? ex.Message : "Spotify is unavailable"); }
     }
+    // ---- Federano: shuffle / repeat / liked for the lyrics page, and the account's playlists
+    private (long At, JsonObject Value)? _player;
+    private (long At, JsonObject Value)? _playlists;
+
+    /// <summary>Is this song in the library? null when Spotify does not say (an account connected before the
+    /// library-read permission was asked for answers 403 until it is connected again).</summary>
+    private async Task<bool?> Liked(string uri, CancellationToken ct)
+    {
+        try { return (await Request(HttpMethod.Get, "me/library/contains?uris=" + Uri.EscapeDataString(uri), null, ct) as JsonArray)?.FirstOrDefault()?.GetValue<bool>(); }
+        catch (IOException) { return null; }
+    }
+
+    /// <summary>Shuffle, repeat and whether the playing song is liked; read at most every 3 s.</summary>
+    public async Task<JsonObject> PlayerState(CancellationToken ct)
+    {
+        if (_player is { } c && Now - c.At < 3000) return c.Value;
+        JsonObject v;
+        try
+        {
+            var p = await Request(HttpMethod.Get, "me/player?additional_types=track,episode", null, ct);
+            var uri = p?["item"]?["uri"]?.GetValue<string>();
+            v = new() { ["connected"] = true, ["shuffle"] = p?["shuffle_state"]?.GetValue<bool>() ?? false,
+                ["repeat"] = p?["repeat_state"]?.GetValue<string>() ?? "off",
+                ["liked"] = uri is not null && PlaybackUri(uri) ? await Liked(uri, ct) : null, ["uri"] = uri };
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex) when (ex is IOException or HttpRequestException or JsonException or OperationCanceledException)
+        { v = new() { ["connected"] = false, ["error"] = ex is IOException ? ex.Message : "Spotify is unavailable" }; }
+        _player = (Now, v);
+        return v;
+    }
+
+    /// <summary>The account's playlists (name, cover, owner, song count); read at most every minute.</summary>
+    public async Task<JsonObject> Playlists(CancellationToken ct)
+    {
+        if (_playlists is { } c && Now - c.At < 60_000) return c.Value;
+        JsonObject v;
+        try
+        {
+            var items = new JsonArray();
+            for (var offset = 0; offset < 200; offset += 50)
+            {
+                var page = await Request(HttpMethod.Get, $"me/playlists?limit=50&offset={offset}", null, ct);
+                var got = page?["items"] as JsonArray ?? [];
+                foreach (var pl in got)
+                {
+                    var uri = pl?["uri"]?.GetValue<string>();
+                    if (uri is null || !PlaybackUri(uri)) continue;
+                    var img = (pl?["images"] as JsonArray ?? []).Select(i => i?["url"]?.GetValue<string>()).FirstOrDefault(u => u is not null && u.StartsWith("https://", StringComparison.Ordinal) && u.Length <= 300);
+                    items.Add(new JsonObject { ["id"] = uri, ["name"] = pl?["name"]?.GetValue<string>() ?? "", ["owner"] = pl?["owner"]?["display_name"]?.GetValue<string>() ?? "",
+                        ["tracks"] = pl?["tracks"]?["total"]?.GetValue<int?>() ?? pl?["items"]?["total"]?.GetValue<int?>(), ["image"] = img });
+                }
+                if (got.Count < 50) break;
+            }
+            v = new() { ["connected"] = true, ["items"] = items };
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex) when (ex is IOException or HttpRequestException or JsonException or OperationCanceledException)
+        {
+            var msg = ex is IOException ? ex.Message : "Spotify is unavailable";
+            v = new() { ["connected"] = false, ["error"] = msg, ["reconnect"] = msg.Contains("HTTP 403") || msg.Contains("HTTP 401") };
+        }
+        _playlists = (Now, v);
+        return v;
+    }
+
     private string DeviceQuery() => _config.Get().Controls.SpotifyDevice is { Length: > 0 } id ? "?device_id=" + Uri.EscapeDataString(id) : "";
 
     // ---- Federano "Letra" page: the playing artist's photo (Spotify's image server), looked up once per artist
@@ -355,6 +460,27 @@ public sealed class SpotifyControl : IDisposable
     /// result. With no active player it starts on this computer's Spotify app (or the first device Spotify knows).
     /// Answers in Portuguese.
     /// </summary>
+    /// <summary>Federano: "adiciona na fila X": the first song found goes to the end of Spotify's queue.</summary>
+    public async Task<PlayResult> QueueSearch(string query, CancellationToken ct)
+    {
+        try
+        {
+            var found = await Request(HttpMethod.Get, $"search?type=track&limit=5&q={Uri.EscapeDataString(query)}", null, ct);
+            var item = (found?["tracks"]?["items"] as JsonArray)?.FirstOrDefault(i => i?["uri"] is not null);
+            if (item is null) return new(false, $"Não achei \"{query}\" no Spotify.");
+            var uri = item["uri"]!.GetValue<string>();
+            await Request(HttpMethod.Post, "me/player/queue?uri=" + Uri.EscapeDataString(uri) + DeviceQuery().Replace('?', '&'), null, ct);
+            _snapshot = null;
+            var artist = item["artists"] is JsonArray artists ? string.Join(", ", artists.Select(a => a?["name"]?.GetValue<string>() ?? "").Where(n => n.Length > 0)) : "";
+            return new(true, "", item["name"]?.GetValue<string>() ?? query, artist);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (IOException ex) when (ex.Message.Contains("HTTP 403")) { return new(false, "O Spotify recusou o pedido (a fila exige Spotify Premium e o Spotify aberto)."); }
+        catch (IOException ex) when (ex.Message.Contains("HTTP 404")) { return new(false, "Nenhum Spotify tocando agora para pôr na fila."); }
+        catch (Exception ex) when (ex is IOException or HttpRequestException or JsonException or OperationCanceledException)
+        { return new(false, "Não consegui falar com o Spotify agora."); }
+    }
+
     public async Task<PlayResult> PlaySearch(string query, string kind, CancellationToken ct)
     {
         if (kind is not ("track" or "album" or "playlist" or "artist")) kind = "track";

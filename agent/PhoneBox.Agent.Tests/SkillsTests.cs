@@ -133,6 +133,31 @@ public class SpotifyVoiceTests
         Assert.Equal(query, m?.Query);
     }
 
+    // Federano: like, shuffle, repeat and the queue by voice
+    [Theory]
+    [InlineData("Federano, curte essa música", "curtir")]
+    [InlineData("gostei dessa", "curtir")]
+    [InlineData("modo aleatório", "aleatorio")]
+    [InlineData("desliga o aleatório", "parar-aleatorio")]
+    [InlineData("repete essa música", "repetir-musica")]
+    [InlineData("repete a playlist", "repetir-playlist")]
+    [InlineData("para de repetir", "parar-de-repetir")]
+    public void SpotifyModes(string said, string skill)
+    {
+        Assert.Null(SkillEngine.MatchQuery(Shipped, said));
+        Assert.Equal(skill, (SkillEngine.Exact(Shipped, said) ?? SkillEngine.Match(Shipped, said))?.Id);
+    }
+
+    [Theory]
+    [InlineData("adiciona na fila Evidências", "Evidências")]
+    [InlineData("Federano, coloca na fila Garota de Ipanema", "Garota de Ipanema")]
+    public void QueueKeepsWhatWasSaid(string said, string query)
+    {
+        var m = SkillEngine.MatchQuery(Shipped, said);
+        Assert.Equal("adicionar-na-fila", m?.Skill.Id);
+        Assert.Equal(query, m?.Query);
+    }
+
     [Theory]
     [InlineData("toca")]
     [InlineData("Federano, toca")]

@@ -119,7 +119,7 @@ app.MapGet("/api/controls/radio-logo", async (string? id, ControlDeck deck, Http
 app.MapGet("/api/controls/spotify/state", async (SpotifyControl spotify, CancellationToken ct) => Results.Json(await spotify.Snapshot(ct)));
 app.MapPost("/api/controls/spotify/action/{action}", async (string action, string? id, SpotifyControl spotify, ControlDeck deck, CancellationToken ct) =>
 {
-    var res = action is "play-queued" or "playlist"
+    var res = action is "play-queued" or "playlist" or "play-playlist"
         ? await deck.RunWithMediaFocusAsync(async token =>
         {
             var result = await spotify.Act(action, id, token);
@@ -129,6 +129,9 @@ app.MapPost("/api/controls/spotify/action/{action}", async (string action, strin
         : await spotify.Act(action, id, ct);
     return Results.Json(res);
 });
+// Federano: shuffle / repeat / liked (lyrics page) and the account's playlists (playlist picker)
+app.MapGet("/api/controls/spotify/player", async (SpotifyControl spotify, CancellationToken ct) => Results.Json(await spotify.PlayerState(ct)));
+app.MapGet("/api/controls/spotify/playlists", async (SpotifyControl spotify, CancellationToken ct) => Results.Json(await spotify.Playlists(ct)));
 app.MapGet("/api/controls/spotify/connect", (SpotifyControl spotify) =>
 { try { return Results.Json(new { url = spotify.Begin(), redirectUri = spotify.RedirectUri }); } catch (InvalidOperationException ex) { return Results.BadRequest(new { error = ex.Message }); } });
 app.MapPost("/api/controls/spotify/disconnect", async (SpotifyControl spotify, CancellationToken ct) => { await spotify.Disconnect(ct); return Results.Ok(); });
