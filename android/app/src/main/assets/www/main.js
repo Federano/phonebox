@@ -1513,7 +1513,7 @@ function soon() { if (!navTimer) navTimer = setInterval(pump, 250); }
 // Federano: a song starting on Spotify opens the lyrics page by itself (the page with the "lyrics" widget), straight
 // away: no countdown card and no waiting for the panel to be idle. A minute after Spotify stops (or another player takes
 // over) the panel goes back to the page it came from, if it is still on the lyrics.
-let spLast = '', spStopSince = 0, spFrom = -1;
+let spLast = '', spStopSince = 0, spFrom = -1, spPlayedAt = 0;
 const lyricsPageId = () => pages.find((p) => (p.widgets || []).some((w) => w.type === 'lyrics'))?.id || null;
 export function spotifyAuto(m) {
   if (PREVIEW) return;
@@ -1521,7 +1521,7 @@ export function spotifyAuto(m) {
   if (!id) return;
   const idx = resolvePage(id);
   if (m && m.app === 'Spotify' && m.playing) {
-    spStopSince = 0;
+    spStopSince = 0; spPlayedAt = Date.now();
     const k = `${m.title}|${m.artist}`;
     if (k === spLast) return;
     spLast = k;
@@ -1555,7 +1555,8 @@ const idleLimit = () => pages[curPage]?.idleSec ?? dsp().idleReturnSec ?? 90;
 function idleDue() {
   if (pagePaused) return false;
   // Federano: while Spotify plays the panel stays where it is ("Ninguém por perto" does not take it home)
-  if (media && media.app === 'Spotify' && media.playing) return false;
+  // (and for a minute after it stops: between two songs it is briefly not playing, and that must not ask to leave)
+  if ((media && media.app === 'Spotify' && media.playing) || Date.now() - spPlayedAt < 60_000) return false;
   const idle = idleLimit();
   if (!(idle > 0)) return false;
   const maxHold = (dsp().holdMaxMin ?? 30) * 60_000;
