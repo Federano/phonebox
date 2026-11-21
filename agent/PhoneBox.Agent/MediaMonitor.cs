@@ -188,13 +188,30 @@ public sealed class MediaMonitor(ILogger<MediaMonitor> log) : BackgroundService
     private GlobalSystemMediaTransportControlsSession? Pick()
     {
         var current = _mgr?.GetCurrentSession();
-        if (!PreferBrowser || _mgr is null) return current;
+        if (!PreferBrowser || _mgr is null) return PreferPlaying(current);
         try
         {
             if (current is not null && IsBrowserApp(current.SourceAppUserModelId)) return current;
             var browsers = _mgr.GetSessions().Where(x => IsBrowserApp(x.SourceAppUserModelId)).ToList();
             return browsers.FirstOrDefault(x => x.GetPlaybackInfo().PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
                 ?? browsers.FirstOrDefault() ?? current;
+        }
+        catch { return current; }
+    }
+
+    /// <summary>Federano: Windows' "current" session can stay on a paused browser tab while Spotify plays; then the one
+    /// actually playing wins, Spotify first.</summary>
+    private GlobalSystemMediaTransportControlsSession? PreferPlaying(GlobalSystemMediaTransportControlsSession? current)
+    {
+        try
+        {
+            static bool Playing(GlobalSystemMediaTransportControlsSession x) =>
+                x.GetPlaybackInfo().PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+            static bool IsSpotify(GlobalSystemMediaTransportControlsSession x) =>
+                x.SourceAppUserModelId?.Contains("spotify", StringComparison.OrdinalIgnoreCase) == true;
+            var playing = (_mgr?.GetSessions() ?? []).Where(Playing).ToList();
+            if (playing.Count == 0) return current;
+            return playing.FirstOrDefault(IsSpotify) ?? (current is not null && Playing(current) ? current : playing[0]);
         }
         catch { return current; }
     }
