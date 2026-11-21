@@ -65,6 +65,7 @@ public sealed class AgentConfig
         codexBar = CodexBar,
         night = Night,
         display = Display,
+        federano = new { wakeWord = Federano.WakeWord, wakeOffline = Federano.WakeOffline },
         pages = PagesFor(deviceId).Select(p => new
         {
             p.Id, p.Title, p.Icon, p.Enabled, p.IdleSec, p.Appearance,
@@ -205,6 +206,10 @@ public sealed class FederanoConfig
     public bool MirrorOffer { get; set; } = true;
     /// <summary>Seconds the "Ver no tablet?" pop-up stays without an answer.</summary>
     public int MirrorOfferSeconds { get; set; } = 5;
+    /// <summary>The tablet listens all the time for "Federano, ..." and runs the command (off unless turned on).</summary>
+    public bool WakeWord { get; set; }
+    /// <summary>Wake word: recognize on the tablet only (Android 12+ on-device recognizer), nothing sent to Google.</summary>
+    public bool WakeOffline { get; set; } = true;
 }
 
 public sealed class LanConfig
