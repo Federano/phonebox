@@ -67,11 +67,31 @@ function voiceWave(g, W, H, st, cols) {
   }
 }
 
+// Federano, Tema 01 (Minimalista): pure black, two red lines waving with the music (with the voice on a podcast) and a
+// very faint red light breathing on the beat
+function minimalBg(g, W, H, st) {
+  g.clearRect(0, 0, W, H);
+  const s = W / 1000, t = st.now / 1000, beat = st.pulse, lvl = st.pod ? st.voice * st.act : (.4 + st.bass) * st.act;
+  const gr = g.createRadialGradient(W * .5, H * 1.05, 0, W * .5, H * 1.05, H * .9);
+  gr.addColorStop(0, `rgba(255,42,79,${(.06 + .04 * Math.sin(t * .8) + .07 * beat).toFixed(3)})`); gr.addColorStop(1, 'rgba(255,42,79,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, W, H);
+  for (let k = 0; k < 2; k++) {
+    g.beginPath();
+    for (let x = 0; x <= W; x += 6 * s) {
+      const amp = (st.pod ? (2 + 22 * lvl) : (6 + 14 * lvl) * (1 + 1.4 * beat)) * (k ? .6 : 1) * s;
+      const y = H * .9 + k * 10 * s + Math.sin(x / s * .013 + t * (1.6 + k * .4)) * amp * Math.sin(t * .7 + x / s * .004 + k);
+      x ? g.lineTo(x, y) : g.moveTo(x, y);
+    }
+    g.strokeStyle = k ? 'rgba(255,42,79,.22)' : 'rgba(255,42,79,.7)'; g.lineWidth = (k ? 1 : 1.6) * s; g.stroke();
+    if (!k) { g.lineWidth = 6 * s; g.globalAlpha = .12; g.stroke(); g.globalAlpha = 1; }
+  }
+}
+
 // the worker's own loop: same smoothing and beat as on the page; the page only sends the sound levels and the state
 function fxWorker() {
   let cv = null, g = null, cols = ['150,120,220', '120,90,200', '200,120,180', '90,140,220'];
   const st = { bass: .3, mid: .3, high: .3, avgBass: .3, pulse: 0, lastBeat: 0, act: 1, ph: 0, lastMs: 0, now: 0, waveAt: -1e9, voice: 0 };
-  const inp = { nb: .3, nm: .3, nh: .3, bands: false, playing: false, pod: false, vis: true };
+  const inp = { nb: .3, nm: .3, nh: .3, bands: false, playing: false, pod: false, vis: true, theme: '00' };
   const raf = self.requestAnimationFrame ? (f) => self.requestAnimationFrame(f) : (f) => setTimeout(() => f(performance.now()), 16);
   let frames = 0;
   function loop() {
@@ -87,7 +107,10 @@ function fxWorker() {
     st.act += ((inp.playing ? 1 : .06) - st.act) * .05;
     st.ph += dt / 1000 * (.5 + .7 * st.act);
     st.lastMs = ms; st.now = ms;
-    if (inp.pod) { st.voice += (inp.nm * 1.4 - st.voice) * .12; voiceWave(g, cv.width, cv.height, st, cols); }
+    if (inp.pod) st.voice += (inp.nm * 1.4 - st.voice) * .12;
+    st.pod = inp.pod;
+    if (inp.theme === '01') minimalBg(g, cv.width, cv.height, st);
+    else if (inp.pod) voiceWave(g, cv.width, cv.height, st, cols);
     else weave(g, cv.width, cv.height, st, cols);
   }
   self.onmessage = (e) => {
@@ -211,7 +234,7 @@ W.lyrics = {
     let worker = null, sent = '';
     if (fx.transferControlToOffscreen && typeof Worker === 'function' && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
       try {
-        const url = URL.createObjectURL(new Blob([`${weave}\n${voiceWave}\n(${fxWorker})();`], { type: 'text/javascript' }));
+        const url = URL.createObjectURL(new Blob([`${weave}\n${voiceWave}\n${minimalBg}\n(${fxWorker})();`], { type: 'text/javascript' }));
         worker = new Worker(url);
         worker.onmessage = (e) => { box.dataset.fxFrames = e.data.frames; };
         const off = fx.transferControlToOffscreen();
@@ -235,9 +258,17 @@ W.lyrics = {
       const nb = part(0, 10), nm = part(10, 30), nh = part(30, 48);
       // the line being sung is checked every frame (not 7 times a second): it lights up right on time
       lineCheck();
+      if (document.body.dataset.ftheme === '01') {
+        if (playing && bands && nb > fxs.avgBass * 1.35 + .08 && ms - fxs.lastBeat > 280) { fxs.pulse = 1; fxs.lastBeat = ms; }
+        fxs.pulse *= .88; fxs.avgBass += (nb - fxs.avgBass) * .03;
+        const el = lines.length && active >= 0 && lines[active] ? lines[active].el : null, b = Math.round(fxs.pulse * 20) / 20;
+        if (el && el._beat !== b) { el._beat = b; el.style.setProperty('--ly-beat', b); }
+        if (podMode) { fxs.voice += (nm * 1.4 - fxs.voice) * .15; box.classList.toggle('ly-quiet', fxs.voice < .12 || !playing); }
+      }
       if (worker) {
-        const msg = { nb, nm, nh, bands: !!bands, playing, pod: podMode, vis: true };
-        const key2 = `${nb.toFixed(3)}|${nm.toFixed(3)}|${nh.toFixed(3)}|${playing}|${podMode}|${cw}x${ch}`;
+        const theme = document.body.dataset.ftheme || '00';
+        const msg = { nb, nm, nh, bands: !!bands, playing, pod: podMode, vis: true, theme };
+        const key2 = `${nb.toFixed(3)}|${nm.toFixed(3)}|${nh.toFixed(3)}|${playing}|${podMode}|${theme}|${cw}x${ch}`;
         if (key2 !== sent) { sent = key2; worker.postMessage({ inp: msg, size: [cw, ch] }); }
       } else {
       fxs.bass += (nb - fxs.bass) * .25; fxs.mid += (nm - fxs.mid) * .2; fxs.high += (nh - fxs.high) * .2;
@@ -248,7 +279,10 @@ W.lyrics = {
       fxs.ph += (ms - (fxs.lastMs || ms)) / 1000 * (.5 + .7 * fxs.act);
       fxs.lastMs = ms;
       fxs.now = ms;
-      if (podMode) { fxs.voice += (nm * 1.4 - fxs.voice) * .15; voiceWave(fx.getContext('2d'), cw, ch, fxs, cols); }
+      if (podMode) fxs.voice += (nm * 1.4 - fxs.voice) * .15;
+      fxs.pod = podMode;
+      if (document.body.dataset.ftheme === '01') minimalBg(fx.getContext('2d'), cw, ch, fxs);
+      else if (podMode) voiceWave(fx.getContext('2d'), cw, ch, fxs, cols);
       else weave(fx.getContext('2d'), cw, ch, fxs, cols);
       }
       // the vignette's breathing and the photo's slow zoom are CSS animations: the GPU runs them on its own
@@ -260,7 +294,7 @@ W.lyrics = {
     }
     if (!matchMedia('(prefers-reduced-motion: reduce)').matches) raf = requestAnimationFrame(animate);
     box.append(
-      h('div', 'ly-main', bgPhoto, h('div', 'ly-bgveil'), fx, vig, h('div', 'ly-top', chip, h('div', 'ly-topr', trBtn, fsBtn)), h('div', 'ly-words', list, note, pod)),
+      h('div', 'ly-main', bgPhoto, h('div', 'ly-bgveil'), fx, vig, h('div', 'ly-top', h('div', 'ly-chipw', chip, h('span', 'ly-talk', h('b'), h('b'), h('b'))), h('div', 'ly-topr', trBtn, fsBtn)), h('div', 'ly-words', list, note, pod)),
       h('div', 'ly-card', h('div', 'ly-pic', img), h('div', 'ly-meta', title, artist), h('div', 'ly-prog', bar, times), ctl, ctl2, qHead, queue, sheet));
     // the next songs; tapping one plays it (Spotify connected in the settings)
     let qKey = '', lastQueue = [];
@@ -362,9 +396,10 @@ W.lyrics = {
       } catch (_) { toast('Sem conexão com o PC.', 'err'); }
       setTimeout(loadModes, 600);
     }
-    bShuf.onclick = () => spAct('shuffle', (st) => { st.shuffle = !st.shuffle; });
+    const replay = (el, cls) => { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); };
+    bShuf.onclick = () => { replay(bShuf, 'ly-spin'); spAct('shuffle', (st) => { st.shuffle = !st.shuffle; }); };
     bRep.onclick = () => spAct('repeat', (st) => { st.repeat = st.repeat === 'off' ? 'context' : st.repeat === 'context' ? 'track' : 'off'; });
-    bLike.onclick = () => spAct('like', (st) => { st.liked = !st.liked; });
+    bLike.onclick = () => { spAct('like', (st) => { st.liked = !st.liked; }); if (pState && pState.liked) replay(bLike, 'ly-pop'); };
     // ---- the playlist picker: the account's playlists over the card; a tap plays one
     async function openLists() {
       haptic(); sheet.hidden = false; plNote.textContent = 'Carregando…'; plList.replaceChildren();
@@ -430,6 +465,7 @@ W.lyrics = {
     });
 
     function setArt(src, isArtist) {
+      if (img.dataset.src !== (src || '') && img.dataset.src) { const pic = img.parentElement; pic.classList.remove('ly-wipe'); void pic.offsetWidth; pic.classList.add('ly-wipe'); }
       if (img.dataset.src === src) return;
       img.dataset.src = src || '';
       box.classList.toggle('ly-noart', !src);
@@ -520,6 +556,7 @@ W.lyrics = {
             m = j.media; at = performance.now();
             offset = Number(j.posOffsetMs) || 0;
             lastArtistPending = !!j.artistPending;
+            if (title.textContent !== m.title) { const meta = title.parentElement; meta.classList.remove('ly-swap'); void meta.offsetWidth; meta.classList.add('ly-swap'); }
             title.textContent = m.title; artist.textContent = [m.artist, m.album].filter(Boolean).join(' · ');
             if (m.app === 'Spotify') { fillQueue(j.queue, m.title); if (visible()) loadModes(); } else { lastQueue = []; fillQueue([]); }
             chip.textContent = `● ${m.app || 'PC'} · ${m.playing ? 'tocando' : 'pausado'}`;
@@ -530,7 +567,8 @@ W.lyrics = {
               setPod(true);
               title.textContent = ep.name || m.title; artist.textContent = ep.show || m.artist || '';
               chip.textContent = `● Podcast · ${m.playing ? 'tocando' : 'pausado'}`;
-              pShow.textContent = ep.show || ''; pName.textContent = ep.name || m.title;
+              pShow.textContent = ep.show || '';
+              if (pName.dataset.t !== (ep.name || m.title)) { pName.dataset.t = ep.name || m.title; pName.replaceChildren(...pName.dataset.t.split(' ').flatMap((w, j) => { const s2 = h('span', 'ly-w', w); s2.style.animationDelay = (j * 80) + 'ms'; return [s2, ' ']; })); }
               pMeta.textContent = [niceDate(ep.date), ep.durationMs > 0 ? longTime(ep.durationMs) : '', ep.publisher].filter(Boolean).join(' · ');
               pDesc.textContent = ep.description || '';
               lastQueue = []; fillQueue([]);

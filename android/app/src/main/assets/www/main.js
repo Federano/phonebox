@@ -20,6 +20,7 @@ import './mirror.js';
 import './widgets/camera.js';
 import './widgets/spectrum.js';
 import './wake.js';
+import { openThemes } from './themes.js';
 
 // PhoneBox desk panel. Pages are 12 × 6 grids of widgets, designed in the agent's settings page.
 // The panel talks to the PhoneBox agent through "/agent/*", which the Android shell proxies over USB
@@ -1784,6 +1785,7 @@ export function switchPc(pc) {
 export function closeOverview() { $('overview').hidden = true; }
 $('overview').addEventListener('click', closeOverview);
 $('ovRules').addEventListener('click', (e) => { e.stopPropagation(); toggleRulesPause(); });
+$('ovThemes').addEventListener('click', (e) => { e.stopPropagation(); openThemes(); });
 
 let dotsHoldTimer = 0, dotsHoldStart = null, heldDots = false;
 /** Cancels any pending long-press hold timer on the #dots bar. */
