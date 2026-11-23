@@ -511,6 +511,21 @@
     if (path.startsWith('/api/controls/command/') && method === 'POST') return json(await controlCommand(path.split('/').pop(), q));
     if (path === '/api/state') return json(state(q.has('ev') ? +q.get('ev') : null));
     if (path === '/api/config') return json({ version: cfgVersion(), config: publicConfig(await config()) });
+    // Federano "Reuniões": today's meetings around the demo's clock, a call that can be started by "opening" one
+    if (path === '/api/meet') {
+      const t = now(), m = 60000, call = store.get('pb-demo-meet', null);
+      return json({ calendars: true, errors: [], call, today: [
+        { title: 'Daily do time', start: t - 120 * m, end: t - 105 * m, meet: 'https://meet.google.com/abc-defg-hij', people: 6, location: null, color: '' },
+        { title: 'Revisão do projeto Federano', start: t + 4 * m, end: t + 49 * m, meet: 'https://meet.google.com/xyz-abcd-efg', people: 5, location: null, color: '' },
+        { title: 'Planejamento da semana', start: t + 240 * m, end: t + 300 * m, meet: null, people: 0, location: 'Sala 3', color: '' }] });
+    }
+    if (path === '/api/meet/open' && method === 'POST') { store.set('pb-demo-meet', { inCall: true, mic: true, cam: false, hand: false, code: 'xyz-abcd-efg' }); return json({ ok: true }); }
+    if (path.startsWith('/api/meet/press/') && method === 'POST') {
+      const c = store.get('pb-demo-meet', null); if (!c) return json({ ok: false, error: 'Nenhuma chamada do Meet aberta no Chrome do PC.' });
+      const k = path.split('/').pop(); if (k === 'mic') c.mic = !c.mic; if (k === 'cam') c.cam = !c.cam; if (k === 'hand') c.hand = !c.hand;
+      store.set('pb-demo-meet', k === 'leave' ? null : c); return json({ ok: true });
+    }
+    if (path === '/api/meet/mirror' && method === 'POST') return json({ ok: false, error: 'Na demonstração não há Meet para mostrar.' });
     // Federano: the tablet's page editor (the agent checks more: PC-only widgets, option values)
     if (path === '/api/panel/editable') return json({ pcOnly: ['command', 'html', 'shortcuts', 'button', 'image', 'camera', 'stack', 'ha'], editable: { clock: ['status', 'weather', 'date'], analog: ['seconds', 'numbers', 'zone', 'label'], note: ['title', 'text'], weather: [], lyrics: [] } });
     if (path.startsWith('/api/panel/page/') && method === 'POST') {

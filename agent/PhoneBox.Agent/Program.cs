@@ -75,6 +75,7 @@ AddMonitor<MediaMonitor>(builder.Services);
 builder.Services.AddSingleton<SkillEngine>();
 builder.Services.AddSingleton<LyricsService>();
 builder.Services.AddSingleton<YouTubeTracker>();
+builder.Services.AddSingleton<MeetHub>();
 builder.Services.AddSingleton<MirrorCapture>();
 builder.Services.AddSingleton<MirrorOffers>();
 AddMonitor<QuotaMonitor>(builder.Services);
@@ -232,7 +233,7 @@ app.Use(async (ctx, next) =>
             && app.Services.GetRequiredService<SpotifyControl>().HasPendingState(ctx.Request.Query["state"]);
         // Federano: the Chrome extension (extras/chrome-federano) reports the YouTube video open on the PC; only
         // that one endpoint takes a chrome-extension:// origin, and it only stores a video id and a time.
-        var extensionReport = ctx.Request.Method == "POST" && (ctx.Request.Path == "/api/browser/youtube" || ctx.Request.Path == "/api/mirror/push" || ctx.Request.Path == "/api/mirror/start")
+        var extensionReport = ctx.Request.Method == "POST" && (ctx.Request.Path == "/api/browser/youtube" || ctx.Request.Path == "/api/mirror/push" || ctx.Request.Path == "/api/mirror/start" || ctx.Request.Path == "/api/meet/state")
             && origin.StartsWith("chrome-extension://", StringComparison.Ordinal) && (host == "127.0.0.1" || host == "localhost");
         if (extensionReport) { await next(); return; }
         if ((host != "127.0.0.1" && host != "localhost") || (origin != "" && !SameOrigins.Contains(origin))
@@ -541,6 +542,43 @@ object State(IServiceProvider sp, long? ev)
 
 // Upcoming calendar events (Agenda widget); the feed URLs stay here.
 app.MapGet("/api/calendar", (CalendarMonitor cal) => Results.Json(cal.Snapshot()));
+
+// ---- Federano "Reuniões": today's meetings, the Meet tab's state, its buttons, opening a room and showing it on the tablet
+app.MapGet("/api/meet", (CalendarMonitor cal, MeetHub meet, ConfigStore cfg) =>
+{
+    var now = DateTimeOffset.Now;
+    var dayStart = new DateTimeOffset(now.Date, now.Offset).ToUnixTimeMilliseconds();
+    var dayEnd = dayStart + 86_400_000;
+    var snap = cal.Snapshot();
+    var today = snap.Events.Where(e => !e.AllDay && e.End > dayStart && e.Start < dayEnd).OrderBy(e => e.Start)
+        .Select(e => new { e.Title, e.Start, e.End, e.Location, e.Meet, e.People, e.Color });
+    var s = meet.Current;
+    return Results.Json(new { today, calendars = cfg.Get().Calendars.Count > 0, errors = snap.Errors,
+        call = s is null ? null : new { s.InCall, s.Mic, s.Cam, s.Hand, s.Code } });
+});
+// from the extension (Meet tab): its state; the answer carries a button pressed on the tablet
+app.MapPost("/api/meet/state", (int? tab, bool? call, bool? mic, bool? cam, bool? hand, string? code, MeetHub meet) =>
+{
+    var c = code is { Length: > 0 and <= 20 } && System.Text.RegularExpressions.Regex.IsMatch(code, "^[a-z-]+$") ? code : "";
+    var cmd = meet.Report(new(tab ?? -1, call == true, mic, cam, hand, c, 0));
+    return Results.Json(new { cmd });
+});
+app.MapPost("/api/meet/press/{cmd}", (string cmd, MeetHub meet) =>
+    meet.Press(cmd) ? Results.Json(new { ok = true }) : Results.Json(new { ok = false, error = "Nenhuma chamada do Meet aberta no Chrome do PC." }));
+app.MapPost("/api/meet/open", (string? url, ILogger<Program> log) =>
+{
+    if (!MeetHub.ValidRoom(url)) return Results.BadRequest(new { ok = false, error = "Endereço do Meet inválido" });
+    try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url!) { UseShellExecute = true }); }
+    catch (Exception ex) { log.LogWarning("meet: could not open {Url}: {Msg}", url, ex.Message); return Results.Json(new { ok = false, error = "Não consegui abrir o navegador do PC." }); }
+    log.LogInformation("meet: opened a room from the tablet");
+    return Results.Json(new { ok = true });
+});
+// show the Meet tab on the tablet (the same mirroring as videos: the extension sends the tab's main video)
+app.MapPost("/api/meet/mirror", (MeetHub meet, MirrorCapture mirror) =>
+{
+    if (meet.Current is not { InCall: true } s || s.Tab < 0) return Results.Json(new { ok = false, error = "Nenhuma chamada do Meet aberta no Chrome do PC." });
+    return mirror.Start(s.Tab) is { } error ? Results.Json(new { ok = false, error }) : Results.Json(new { ok = true, mirror = true });
+});
 
 // Headlines for the Feeds widget; the feed and article addresses stay here, the phone opens an article by its id.
 app.MapGet("/api/feeds", (FeedMonitor feeds) =>

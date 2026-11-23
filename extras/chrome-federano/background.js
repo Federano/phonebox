@@ -33,6 +33,15 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     startTabCapture(sender.tab.id).then((ok) => reply({ tabCapture: ok }));
     return true;
   }
+  if (msg.type === 'federano-meet') {
+    // Federano "Reuniões": the Meet tab's state (in a call, microphone, camera, hand); the answer may carry a button to press
+    const q = new URLSearchParams({ call: String(!!msg.call), code: String(msg.code || '').slice(0, 20) });
+    if (sender.tab && Number.isInteger(sender.tab.id)) q.set('tab', String(sender.tab.id));
+    for (const k of ['mic', 'cam', 'hand']) if (typeof msg[k] === 'boolean') q.set(k, String(msg[k]));
+    fetch(`${AGENT}/meet/state?${q}`, { method: 'POST', cache: 'no-store' }).then((r) => (r.ok ? r.json() : {}))
+      .then((j) => reply({ cmd: typeof j.cmd === 'string' ? j.cmd : null })).catch(() => reply({ cmd: null }));
+    return true;
+  }
   if (msg.type !== 'federano-video') return false;
   const tab = sender.tab && Number.isInteger(sender.tab.id) ? sender.tab.id : null;
   if (tab !== null && msg.rect) {

@@ -3,7 +3,9 @@ using System.Text;
 
 namespace PhoneBox.Agent;
 
-public sealed record CalendarEvent(string Title, long Start, long End, bool AllDay, string? Location, string Calendar, string Color);
+/// <param name="Meet">Federano: the event's Google Meet address (meet.google.com/abc-defg-hij), if it has one.</param>
+/// <param name="People">Federano: how many people are invited.</param>
+public sealed record CalendarEvent(string Title, long Start, long End, bool AllDay, string? Location, string Calendar, string Color, string? Meet = null, int People = 0);
 
 public sealed record CalendarSnapshot(IReadOnlyList<CalendarEvent> Events, long Updated, IReadOnlyList<string> Errors);
 
@@ -139,6 +141,10 @@ public static class Ics
             var title = Unescape(e.FirstOrDefault(p => p.Name == "SUMMARY")?.Value ?? "(no title)");
             var location = e.FirstOrDefault(p => p.Name == "LOCATION")?.Value is { Length: > 0 } loc ? Unescape(loc) : null;
             var uid = e.FirstOrDefault(p => p.Name == "UID")?.Value ?? "";
+            // Federano: the Google Meet link (Google puts it in X-GOOGLE-CONFERENCE; others in the description or place)
+            var meet = MeetLink(e.FirstOrDefault(p => p.Name == "X-GOOGLE-CONFERENCE")?.Value)
+                ?? MeetLink(Unescape(e.FirstOrDefault(p => p.Name == "DESCRIPTION")?.Value ?? "")) ?? MeetLink(location);
+            var people = e.Count(p => p.Name == "ATTENDEE");
             var rrule = e.FirstOrDefault(p => p.Name == "RRULE")?.Value;
             var isOverride = e.Any(p => p.Name == "RECURRENCE-ID");
 
@@ -164,7 +170,7 @@ public static class Ics
                     var f = s + length;
                     if (f <= fromUtc && !(length == TimeSpan.Zero && s >= fromUtc)) continue;
                     if (s >= toUtc) break;
-                    result.Add(new CalendarEvent(title, Ms(s), Ms(f), allDay, location, "", ""));
+                    result.Add(new CalendarEvent(title, Ms(s), Ms(f), allDay, location, "", "", meet, people));
                 }
             }
             catch (ArgumentOutOfRangeException)
@@ -434,6 +440,10 @@ public static class Ics
     }
 
     /// <summary>TEXT escapes (\\ \; \, \n \N), read left to right so "\\n" stays a backslash and an "n".</summary>
+    /// <summary>Federano: a Google Meet address in the text (only meet.google.com/xxx-xxxx-xxx), as https.</summary>
+    public static string? MeetLink(string? text) =>
+        text is null ? null : System.Text.RegularExpressions.Regex.Match(text, @"meet\.google\.com/([a-z]{3}-[a-z]{4}-[a-z]{3})\b") is { Success: true } m ? "https://meet.google.com/" + m.Groups[1].Value : null;
+
     private static string Unescape(string s)
     {
         var sb = new StringBuilder(s.Length);
