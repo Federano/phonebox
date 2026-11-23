@@ -799,6 +799,12 @@ nav a.on::before { color: var(--accent); }
         <div class="row" style="margin-bottom:8px"><label class="switch"><input type="checkbox" data-bind="federano.wakeWord"><span></span></label> <span>Microfone do tablet sempre ouvindo: falar "Federano, ..." roda o comando (ex.: "Federano, próxima música")</span></div>
         <div class="row" style="margin-bottom:8px"><label class="switch"><input type="checkbox" data-bind="federano.wakeOffline"><span></span></label> <span>Reconhecer a voz só no tablet, sem mandar nada para o Google (Android 12 ou mais novo)</span></div>
         <p class="hint" style="margin:8px 0 0">Cada vídeo é oferecido uma vez: depois de "Agora não" (ou sem resposta) o Federano não pergunta de novo sobre ele.</p>
+        <h3 style="margin-top:18px">Google Agenda (reuniões de trabalho)</h3>
+        <p class="hint">Entre com a conta do trabalho para a página Reuniões ler as reuniões do dia direto do Google (só leitura). Crie o Client ID e o Client secret no Google Cloud (tipo "App para computador") e cole aqui. Eles e a autorização ficam só neste PC.</p>
+        <div class="field" style="max-width:560px"><label for="gClientId">Client ID</label><input id="gClientId" type="text" autocomplete="off" placeholder="...apps.googleusercontent.com"></div>
+        <div class="field" style="max-width:560px"><label for="gClientSecret">Client secret</label><input id="gClientSecret" type="password" autocomplete="off"></div>
+        <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn" type="button" id="gConnect">Conectar Google Agenda</button><button class="btn" type="button" id="gDisconnect">Desconectar</button></div>
+        <p class="hint" id="gStatus" style="margin-top:8px"></p>
       </div>
       <div class="card">
         <h3 data-i18n="s.wifi.title">Wi-Fi &amp; Tailscale</h3>
@@ -3405,6 +3411,23 @@ applyLanguageUi(window.PhoneBoxI18n?.getPref() || 'auto');
 fitLeads();
 load();
 setInterval(loadInfo, 5000);
+</script>
+<script>
+// Federano: Google Calendar sign-in for the meetings page
+(() => {
+  const st = document.getElementById('gStatus'); if (!st) return;
+  const show = async () => { try { const j = await (await fetch('/api/google/state')).json(); st.textContent = j.connected ? `Conectado${j.email ? ' como ' + j.email : ''}.` : 'Não conectado.'; } catch (_) { st.textContent = ''; } };
+  document.getElementById('gConnect').onclick = async () => {
+    const body = JSON.stringify({ clientId: document.getElementById('gClientId').value, clientSecret: document.getElementById('gClientSecret').value });
+    const j = await (await fetch('/api/google/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })).json().catch(() => ({ ok: false, error: 'O agente não respondeu.' }));
+    if (!j.ok) { st.textContent = j.error; return; }
+    st.textContent = 'Abrindo o login do Google… depois de autorizar, volte aqui.';
+    window.open(j.url, '_blank', 'noopener');
+    const t = setInterval(async () => { await show(); if (st.textContent.startsWith('Conectado')) clearInterval(t); }, 3000); setTimeout(() => clearInterval(t), 600000);
+  };
+  document.getElementById('gDisconnect').onclick = async () => { await fetch('/api/google/disconnect', { method: 'POST' }); show(); };
+  show();
+})();
 </script>
 </body>
 </html>

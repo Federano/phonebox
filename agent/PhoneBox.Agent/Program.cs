@@ -76,6 +76,7 @@ builder.Services.AddSingleton<SkillEngine>();
 builder.Services.AddSingleton<LyricsService>();
 builder.Services.AddSingleton<YouTubeTracker>();
 builder.Services.AddSingleton<MeetHub>();
+builder.Services.AddSingleton<GoogleCalendar>();
 builder.Services.AddSingleton<MirrorCapture>();
 builder.Services.AddSingleton<MirrorOffers>();
 AddMonitor<QuotaMonitor>(builder.Services);
@@ -229,7 +230,10 @@ app.Use(async (ctx, next) =>
     else
     {
         var host = ctx.Request.Host.Host;
-        var spotifyCallback = ctx.Request.Method == "GET" && ctx.Request.Path == "/api/controls/spotify/callback"
+        // Federano: Google sends the browser back to /api/google/callback after the sign-in (a cross-site GET, checked by its state)
+        var googleCallback = ctx.Request.Method == "GET" && ctx.Request.Path == "/api/google/callback"
+            && app.Services.GetRequiredService<GoogleCalendar>().HasPendingState(ctx.Request.Query["state"]);
+        var spotifyCallback = googleCallback || ctx.Request.Method == "GET" && ctx.Request.Path == "/api/controls/spotify/callback"
             && app.Services.GetRequiredService<SpotifyControl>().HasPendingState(ctx.Request.Query["state"]);
         // Federano: the Chrome extension (extras/chrome-federano) reports the YouTube video open on the PC; only
         // that one endpoint takes a chrome-extension:// origin, and it only stores a video id and a time.
@@ -544,17 +548,22 @@ object State(IServiceProvider sp, long? ev)
 app.MapGet("/api/calendar", (CalendarMonitor cal) => Results.Json(cal.Snapshot()));
 
 // ---- Federano "Reuniões": today's meetings, the Meet tab's state, its buttons, opening a room and showing it on the tablet
-app.MapGet("/api/meet", (string? cal, CalendarMonitor cal2, MeetHub meet, ConfigStore cfg) =>
+app.MapGet("/api/meet", async (string? cal, CalendarMonitor cal2, MeetHub meet, ConfigStore cfg, GoogleCalendar google, CancellationToken ct) =>
 {
     var now = DateTimeOffset.Now;
     var dayStart = new DateTimeOffset(now.Date, now.Offset).ToUnixTimeMilliseconds();
     var dayEnd = dayStart + 86_400_000;
     var snap = cal2.Snapshot();
+    if (google.Connected)
+    {
+        var (gEvents, gError) = await google.Today(ct);
+        snap = new CalendarSnapshot(gEvents.Concat(snap.Events.Where(e => e.Calendar != "Trabalho")).ToList(), snap.Updated, gError is null ? snap.Errors : [.. snap.Errors, gError]);
+    }
     // only the chosen calendar (the work account), when the page names one
     var today = snap.Events.Where(e => !e.AllDay && e.End > dayStart && e.Start < dayEnd && (string.IsNullOrWhiteSpace(cal) || string.Equals(e.Calendar, cal.Trim(), StringComparison.OrdinalIgnoreCase))).OrderBy(e => e.Start)
         .Select(e => new { e.Title, e.Start, e.End, e.Location, e.Meet, e.People, e.Color });
     var s = meet.Current;
-    return Results.Json(new { today, calendars = cfg.Get().Calendars.Count > 0, errors = snap.Errors,
+    return Results.Json(new { today, calendars = cfg.Get().Calendars.Count > 0 || google.Connected, google = google.Email, errors = snap.Errors,
         call = s is null ? null : new { s.InCall, s.Mic, s.Cam, s.Hand, s.Code } });
 });
 // from the extension (Meet tab): its state; the answer carries a button pressed on the tablet
@@ -564,6 +573,22 @@ app.MapPost("/api/meet/state", (int? tab, bool? call, bool? mic, bool? cam, bool
     var cmd = meet.Report(new(tab ?? -1, call == true, mic, cam, hand, c, 0));
     return Results.Json(new { cmd });
 });
+// Federano: sign in to Google Calendar (desktop settings): start, Google's return, state, sign out
+app.MapPost("/api/google/connect", async (HttpRequest req, GoogleCalendar google) =>
+{
+    var j = await System.Text.Json.Nodes.JsonNode.ParseAsync(req.Body);
+    try { return Results.Json(new { ok = true, url = google.Begin(j?["clientId"]?.GetValue<string>() ?? "", j?["clientSecret"]?.GetValue<string>() ?? ""), redirectUri = google.RedirectUri }); }
+    catch (InvalidOperationException ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+app.MapGet("/api/google/callback", async (string? state, string? code, string? error, GoogleCalendar google, CancellationToken ct) =>
+{
+    if (error is not null || state is null || code is null)
+        return Results.Content("<meta charset=utf-8><p style='font:18px system-ui'>O Google não autorizou (" + System.Net.WebUtility.HtmlEncode(error ?? "sem código") + "). Volte às configurações do Federano e tente de novo.</p>", "text/html; charset=utf-8");
+    var err = await google.Complete(state, code, ct);
+    return Results.Content("<meta charset=utf-8><p style='font:18px system-ui'>" + (err is null ? "Google Agenda conectado ao Federano. Pode fechar esta aba." : System.Net.WebUtility.HtmlEncode(err)) + "</p>", "text/html; charset=utf-8");
+});
+app.MapGet("/api/google/state", (GoogleCalendar google) => Results.Json(new { connected = google.Connected, email = google.Email, redirectUri = google.RedirectUri }));
+app.MapPost("/api/google/disconnect", (GoogleCalendar google) => { google.Disconnect(); return Results.Json(new { ok = true }); });
 app.MapPost("/api/meet/press/{cmd}", (string cmd, MeetHub meet) =>
     meet.Press(cmd) ? Results.Json(new { ok = true }) : Results.Json(new { ok = false, error = "Nenhuma chamada do Meet aberta no Chrome do PC." }));
 app.MapPost("/api/meet/open", (string? url, string? account, ILogger<Program> log) =>
