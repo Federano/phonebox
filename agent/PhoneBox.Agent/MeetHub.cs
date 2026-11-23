@@ -47,6 +47,10 @@ public sealed class MeetHub
         }
     }
 
+    /// <summary>An e-mail address for Meet's authuser (which of the browser's Google accounts joins).</summary>
+    public static bool ValidAccount(string? s) =>
+        s is not null && s.Trim().Length <= 120 && System.Text.RegularExpressions.Regex.IsMatch(s.Trim(), @"\A[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\z");
+
     /// <summary>Only a real Meet room address (https://meet.google.com/abc-defg-hij) is opened on the PC.</summary>
     public static bool ValidRoom(string? url) =>
         url is not null && System.Text.RegularExpressions.Regex.IsMatch(url, @"\Ahttps://meet\.google\.com/[a-z]{3}-[a-z]{4}-[a-z]{3}\z");

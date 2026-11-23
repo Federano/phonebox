@@ -544,13 +544,14 @@ object State(IServiceProvider sp, long? ev)
 app.MapGet("/api/calendar", (CalendarMonitor cal) => Results.Json(cal.Snapshot()));
 
 // ---- Federano "Reuniões": today's meetings, the Meet tab's state, its buttons, opening a room and showing it on the tablet
-app.MapGet("/api/meet", (CalendarMonitor cal, MeetHub meet, ConfigStore cfg) =>
+app.MapGet("/api/meet", (string? cal, CalendarMonitor cal2, MeetHub meet, ConfigStore cfg) =>
 {
     var now = DateTimeOffset.Now;
     var dayStart = new DateTimeOffset(now.Date, now.Offset).ToUnixTimeMilliseconds();
     var dayEnd = dayStart + 86_400_000;
-    var snap = cal.Snapshot();
-    var today = snap.Events.Where(e => !e.AllDay && e.End > dayStart && e.Start < dayEnd).OrderBy(e => e.Start)
+    var snap = cal2.Snapshot();
+    // only the chosen calendar (the work account), when the page names one
+    var today = snap.Events.Where(e => !e.AllDay && e.End > dayStart && e.Start < dayEnd && (string.IsNullOrWhiteSpace(cal) || string.Equals(e.Calendar, cal.Trim(), StringComparison.OrdinalIgnoreCase))).OrderBy(e => e.Start)
         .Select(e => new { e.Title, e.Start, e.End, e.Location, e.Meet, e.People, e.Color });
     var s = meet.Current;
     return Results.Json(new { today, calendars = cfg.Get().Calendars.Count > 0, errors = snap.Errors,
@@ -565,10 +566,13 @@ app.MapPost("/api/meet/state", (int? tab, bool? call, bool? mic, bool? cam, bool
 });
 app.MapPost("/api/meet/press/{cmd}", (string cmd, MeetHub meet) =>
     meet.Press(cmd) ? Results.Json(new { ok = true }) : Results.Json(new { ok = false, error = "Nenhuma chamada do Meet aberta no Chrome do PC." }));
-app.MapPost("/api/meet/open", (string? url, ILogger<Program> log) =>
+app.MapPost("/api/meet/open", (string? url, string? account, ILogger<Program> log) =>
 {
     if (!MeetHub.ValidRoom(url)) return Results.BadRequest(new { ok = false, error = "Endereço do Meet inválido" });
-    try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url!) { UseShellExecute = true }); }
+    // the Google account to join with (the work one): Meet picks it with authuser
+    if (!string.IsNullOrWhiteSpace(account) && !MeetHub.ValidAccount(account)) return Results.BadRequest(new { ok = false, error = "Conta do Google inválida" });
+    var open = string.IsNullOrWhiteSpace(account) ? url! : url + "?authuser=" + Uri.EscapeDataString(account.Trim());
+    try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(open) { UseShellExecute = true }); }
     catch (Exception ex) { log.LogWarning("meet: could not open {Url}: {Msg}", url, ex.Message); return Results.Json(new { ok = false, error = "Não consegui abrir o navegador do PC." }); }
     log.LogInformation("meet: opened a room from the tablet");
     return Results.Json(new { ok = true });

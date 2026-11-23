@@ -28,7 +28,8 @@ let data = null, lastLoad = 0, loading = null;
 async function load(force) {
   if (!force && Date.now() - lastLoad < 15000 && data) return data;
   if (loading) return loading;
-  loading = fetch(`${API}/meet`, { cache: 'no-store', headers: PANEL_HEADERS }).then((r) => r.json()).then((j) => { data = j; lastLoad = Date.now(); return j; })
+  const cal = String(opts().calendar || '').trim();
+  loading = fetch(`${API}/meet${cal ? '?cal=' + encodeURIComponent(cal) : ''}`, { cache: 'no-store', headers: PANEL_HEADERS }).then((r) => r.json()).then((j) => { data = j; lastLoad = Date.now(); return j; })
     .catch(() => data).finally(() => { loading = null; });
   return loading;
 }
@@ -37,7 +38,8 @@ const opts = () => (meetPage()?.widgets || []).find((w) => w.type === 'meetings'
 
 async function join(ev, withTablet) {
   haptic();
-  const r = await post(`/meet/open?url=${encodeURIComponent(ev.meet)}`);
+  const acct = String(opts().account || '').trim();
+  const r = await post(`/meet/open?url=${encodeURIComponent(ev.meet)}${acct ? '&account=' + encodeURIComponent(acct) : ''}`);
   if (!r.ok) { toast(r.error || 'Não consegui abrir o Meet.', 'err'); return; }
   toast('Abrindo o Meet no PC…');
   if (withTablet) {

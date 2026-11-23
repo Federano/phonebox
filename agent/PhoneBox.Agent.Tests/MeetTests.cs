@@ -21,6 +21,12 @@ public class MeetTests
     [InlineData(null, false)]
     public void OpensOnlyMeetRooms(string? url, bool ok) => Assert.Equal(ok, MeetHub.ValidRoom(url));
 
+    [Theory]
+    [InlineData("fernando@empresa.com.br", true)]
+    [InlineData("a@b", false)]
+    [InlineData("x@y.com&authuser=2", false)]
+    public void AccountForMeetIsAnEmail(string s, bool ok) => Assert.Equal(ok, MeetHub.ValidAccount(s));
+
     [Fact]
     public void AButtonPressedOnTheTabletReachesTheMeetTabOnce()
     {
