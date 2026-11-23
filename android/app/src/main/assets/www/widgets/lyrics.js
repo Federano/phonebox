@@ -249,7 +249,9 @@ W.lyrics = {
       lastFrame = ms;
       const w = Math.round(fx.clientWidth), hgt = Math.round(fx.clientHeight);
       if (!w || !hgt) return;
-      const cw = Math.round(w * .6), ch = Math.round(hgt * .6);
+      // Tema 01 draws only two thin lines: at the screen's full sharpness (soft lines of Tema 00 stay at 60 %, lighter)
+      const res = document.body.dataset.ftheme === '01' ? Math.min(2, window.devicePixelRatio || 1) : .6;
+      const cw = Math.round(w * res), ch = Math.round(hgt * res);
       if (!worker && (fx.width !== cw || fx.height !== ch)) { fx.width = cw; fx.height = ch; }
       // the PC's sound (48 bands): bass, voice and highs, smoothed; a beat when the bass jumps well over its average
       const bands = Date.now() - (D.spectrumAt || 0) < 800 ? D.spectrum : null;
