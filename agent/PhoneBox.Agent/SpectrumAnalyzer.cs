@@ -41,7 +41,8 @@ public sealed class SpectrumAnalyzer(ConfigStore config, ILogger<SpectrumAnalyze
     /// <summary>The latest bands, 0–100 each, or null before the first one.</summary>
     public int[]? Frame() => _frame;
 
-    public bool Shown() => config.Get().Widgets(enabledPagesOnly: true).Any(w => w.Type == WidgetType);
+    // Federano: the lyrics page draws its background from the sound too, so it keeps capture on as well
+    public bool Shown() => config.Get().Widgets(enabledPagesOnly: true).Any(w => w.Type == WidgetType || w.Type == "lyrics");
 
     /// <summary>
     /// A panel shows a visualizer: start capture (if needed) and keep it going for a few seconds. Refused (false) when no
