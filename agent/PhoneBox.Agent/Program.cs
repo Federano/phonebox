@@ -440,6 +440,41 @@ app.MapPost("/api/phone/open", async (AdbReverse adb) => { await adb.OpenPanelAs
 app.MapGet("/api/catalog", () => Results.Text($"{{\"cols\":{Catalog.Cols},\"rows\":{Catalog.Rows},\"widgets\":{Catalog.WidgetsJson},\"templates\":{Catalog.TemplatesJson}}}",
     "application/json; charset=utf-8"));
 
+// Federano: the tablet's page editor. What it may change (simple options; PC-only widgets) and the save of one page;
+// a dated copy of the settings is kept before the first tablet save in every 10 minutes.
+app.MapGet("/api/panel/editable", () =>
+{
+    var types = System.Text.Json.Nodes.JsonNode.Parse(Catalog.WidgetsJson)!.AsArray().Select(w => w?["type"]?.GetValue<string>()).OfType<string>().ToList();
+    return Results.Json(new
+    {
+        pcOnly = types.Where(PanelEdit.PcOnly),
+        editable = types.Where(t => !PanelEdit.PcOnly(t)).ToDictionary(t => t, t => PanelEdit.EditableKeys(t).ToArray()),
+    });
+});
+DateTime lastTabletBackup = DateTime.MinValue;
+app.MapPost("/api/panel/page/{id}", async (string id, HttpRequest req, ConfigStore cfg, ILogger<Program> log) =>
+{
+    PanelEdit.PageEdit? edit;
+    try { edit = await JsonSerializer.DeserializeAsync<PanelEdit.PageEdit>(req.Body, new JsonSerializerOptions(JsonSerializerDefaults.Web)); }
+    catch (JsonException) { return Results.BadRequest(new { error = "Pedido inválido" }); }
+    if (edit is null) return Results.BadRequest(new { error = "Pedido inválido" });
+    string current;
+    try { current = File.ReadAllText(cfg.Path); } catch (IOException ex) { return Results.Problem(ex.Message); }
+    var (json, err) = PanelEdit.Apply(current, id, edit);
+    if (err is not null) return Results.BadRequest(new { error = err });
+    if (DateTime.UtcNow - lastTabletBackup > TimeSpan.FromMinutes(10))
+    {
+        lastTabletBackup = DateTime.UtcNow;
+        try { File.Copy(cfg.Path, cfg.Path + ".antes-tablet-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"), overwrite: false); } catch (IOException) { }
+    }
+    string? saveErr;
+    lock (IconCommit) saveErr = cfg.Save(json!, cfg.Version);
+    if (saveErr is not null) return Results.BadRequest(new { error = saveErr });
+    log.LogInformation("page {Page} edited on the tablet ({Count} widgets)", id, edit.Widgets.Count);
+    StateSignal.Poke();
+    return Results.Json(new { ok = true, version = cfg.VersionText });
+});
+
 // ---------------------------------------------------------------- webhook API: push data and events into the panel
 // POST /api/push/{key}       body: JSON or plain text (or ?value=); optional ?ttl=seconds. Shown by "push" widgets.
 // DELETE /api/push/{key}     removes a value; GET /api/push lists them.

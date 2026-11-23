@@ -511,6 +511,18 @@
     if (path.startsWith('/api/controls/command/') && method === 'POST') return json(await controlCommand(path.split('/').pop(), q));
     if (path === '/api/state') return json(state(q.has('ev') ? +q.get('ev') : null));
     if (path === '/api/config') return json({ version: cfgVersion(), config: publicConfig(await config()) });
+    // Federano: the tablet's page editor (the agent checks more: PC-only widgets, option values)
+    if (path === '/api/panel/editable') return json({ pcOnly: ['command', 'html', 'shortcuts', 'button', 'image', 'camera', 'stack', 'ha'], editable: { clock: ['status', 'weather', 'date'], analog: ['seconds', 'numbers', 'zone', 'label'], note: ['title', 'text'], weather: [], lyrics: [] } });
+    if (path.startsWith('/api/panel/page/') && method === 'POST') {
+      const id = decodeURIComponent(path.slice('/api/panel/page/'.length)), edit = JSON.parse(body || '{}');
+      const c = await config(); const pg = (c.pages || []).find((p) => p.id === id);
+      if (!pg) return json({ error: 'Página não encontrada' }, 400);
+      const old = Object.fromEntries((pg.widgets || []).map((w) => [w.id, w]));
+      pg.widgets = edit.widgets.map((w) => ({ ...(old[w.id] || {}), id: w.id || 't' + Math.random().toString(36).slice(2, 8), type: w.type, x: w.x, y: w.y, w: w.w, h: w.h, options: { ...((old[w.id] || {}).options || {}), ...(w.options || {}) } }));
+      store.set('pb-demo-config', c);
+      store.set('pb-demo-version', cfgVersion() + 1);
+      return json({ ok: true });
+    }
     if (path.startsWith('/api/widget/') && path.endsWith('/note') && method === 'POST') {
       const parts = path.split('/');
       const pageId = decodeURIComponent(parts[3]);
