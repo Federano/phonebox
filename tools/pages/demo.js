@@ -513,7 +513,9 @@
     if (path === '/api/config') return json({ version: cfgVersion(), config: publicConfig(await config()) });
     // Federano "Reuniões": today's meetings around the demo's clock, a call that can be started by "opening" one
     if (path === '/api/meet') {
-      const t = now(), m = 60000, call = store.get('pb-demo-meet', null);
+      // the meetings stay put once seen (anchored to the first ask), so a test can move the clock up to one
+      let t = store.get('pb-demo-meet-base', 0); if (!t) { t = now(); store.set('pb-demo-meet-base', t); }
+      const m = 60000, call = store.get('pb-demo-meet', null);
       return json({ calendars: true, errors: [], call, today: [
         { title: 'Daily do time', start: t - 120 * m, end: t - 105 * m, meet: 'https://meet.google.com/abc-defg-hij', people: 6, location: null, color: '' },
         { title: 'Revisão do projeto Federano', start: t + 4 * m, end: t + 49 * m, meet: 'https://meet.google.com/xyz-abcd-efg', people: 5, location: null, color: '' },

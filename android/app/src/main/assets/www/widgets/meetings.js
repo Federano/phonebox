@@ -1,4 +1,4 @@
-import { API, PANEL_HEADERS, buzz, cfg, curPage, gotoSkillPage, h, haptic, pages, toast } from '../main.js';
+import { API, PANEL_HEADERS, bridge, buzz, curPage, gotoSkillPage, h, haptic, pages, toast } from '../main.js';
 import { W } from '../registry.js';
 import { openMirror } from '../mirror.js';
 
@@ -60,19 +60,22 @@ async function showOnTablet() {
 // ---- the "time to join" alert, wherever the panel is
 const alerted = new Set();
 let alertBox = null;
-function showAlert(ev) {
+function showAlert(ev, loud) {
   const page = meetPage();
   if (page && opts().autoPage !== false && pages[curPage] !== page) gotoSkillPage(page.id);
   buzz('0,200,120,200,120,400');
+  // at the start time: the loud alarm (alarm stream at full volume, even with the tablet's sound off), then a voice
+  if (loud && bridge && bridge.meetAlarm) bridge.meetAlarm(`Hora de entrar na reunião. ${ev.title}`);
+  const quiet = () => { if (loud && bridge && bridge.meetAlarmStop) bridge.meetAlarmStop(); };
   alertBox?.remove();
   const left = () => mins(ev.start - Date.now());
   const ring = h('div', 'mt-ring', String(left()));
   const when = h('div', 'mt-when', left() > 0 ? `Começa em ${left()} min` : 'Começando agora');
-  const close = () => { clearInterval(tick); alertBox?.remove(); alertBox = null; };
+  const close = () => { quiet(); clearInterval(tick); alertBox?.remove(); alertBox = null; };
   const go = h('button', 'mt-abtn go', 'Entrar agora'), goTab = h('button', 'mt-abtn', 'Entrar e ver no tablet'), later = h('button', 'mt-abtn', 'Lembrar em 2 min');
   go.onclick = () => { close(); join(ev, false); };
   goTab.onclick = () => { close(); join(ev, true); };
-  later.onclick = () => { haptic(); close(); setTimeout(() => showAlert(ev), 120000); };
+  later.onclick = () => { haptic(); close(); setTimeout(() => showAlert(ev, loud), 120000); };
   const x = h('button', 'mt-ax', '×'); x.setAttribute('aria-label', 'Fechar'); x.onclick = () => { haptic(); close(); };
   alertBox = h('div', 'mt-alert', h('div', 'mt-abox', x,
     h('div', 'mt-ahead', ring, h('div', null, when, h('div', 'mt-atitle', ev.title), h('div', 'mt-asub', `${hm(ev.start)} – ${hm(ev.end)}${ev.people ? ` · ${ev.people} pessoas` : ''}`))),
@@ -87,12 +90,13 @@ async function checkAlerts() {
   const lead = Number.isFinite(+opts().alertMin) ? +opts().alertMin : 5, now = Date.now();
   for (const ev of j.today || []) {
     if (!ev.meet) continue;
-    const key = `${ev.start}|${ev.title}`;
-    if (alerted.has(key)) continue;
-    if (now >= ev.start - lead * 60000 && now < ev.start + 5 * 60000) { alerted.add(key); showAlert(ev); break; }
+    // two alerts: a few minutes before (quiet: vibration), and at the start time (loud alarm and voice)
+    const key = `${ev.start}|${ev.title}`, keyGo = key + '|go';
+    if (!alerted.has(keyGo) && now >= ev.start - 20000 && now < ev.start + 5 * 60000) { alerted.add(keyGo); alerted.add(key); showAlert(ev, true); break; }
+    if (!alerted.has(key) && lead > 0 && now >= ev.start - lead * 60000 && now < ev.start - 20000) { alerted.add(key); showAlert(ev, false); break; }
   }
 }
-setInterval(checkAlerts, 20000);
+setInterval(checkAlerts, 10000);
 setTimeout(checkAlerts, 5000);
 
 W.meetings = {

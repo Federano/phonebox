@@ -56,6 +56,7 @@ class MainActivity : Activity(), SensorEventListener {
     @Volatile private var mirrorOpen = false
     // Set first in onDestroy: dictation and stream callbacks already queued on the UI thread then skip the destroyed WebView.
     private var destroyed = false
+    private val meetAlarm by lazy { MeetAlarm(this) }
     private val dictation by lazy { Dictation(this) { script -> if (!destroyed) web.evaluateJavascript(script, null) } }
     private lateinit var link: AgentLink
     private lateinit var stream: AgentStream
@@ -493,6 +494,13 @@ class MainActivity : Activity(), SensorEventListener {
 
         @JavascriptInterface
         fun cancelListening(key: String, id: Int) { if (ok(key) && id > 0) dictation.cancel(id) }
+
+        /** Federano "Reuniões": the loud "time to join" alarm (alarm stream, full volume, then a voice saying [text]). */
+        @JavascriptInterface
+        fun meetAlarm(key: String, text: String) { if (ok(key)) meetAlarm.ring(text.take(200)) }
+
+        @JavascriptInterface
+        fun meetAlarmStop(key: String) { if (ok(key)) meetAlarm.stop() }
 
         /**
          * Federano: a mirror is open (or closed). While open, leaving the app shows a bubble over other apps; the first

@@ -32,3 +32,29 @@ test('lists today, alerts before the next meeting, joins it and drives the call'
   await page.screenshot({ path: test.info().outputPath('page.png') });
   expect(errors).toEqual([]);
 });
+
+test('at the start time a loud alarm rings (with the tablet sound off), and closing the alert stops it', async ({ page }) => {
+  await page.clock.install();
+  await page.addInitScript(() => {
+    window.__alarm = [];
+    window.Android = { meetAlarm: (key, text) => window.__alarm.push(['ring', text]), meetAlarmStop: () => window.__alarm.push(['stop']), buzz: () => {} };
+  });
+  await page.goto('/panel/');
+  await page.evaluate(() => {
+    localStorage.clear();
+    localStorage.setItem('pb-demo-config', JSON.stringify({ night: { enabled: false }, shortcuts: [],
+      pages: [{ id: 'reunioes', title: 'Reuniões', enabled: true, widgets: [{ id: 'm', type: 'meetings', x: 0, y: 0, w: 12, h: 6, options: { alertMin: 5 } }] }] }));
+  });
+  await page.reload();
+  // the quiet alert first (4 minutes before): no alarm
+  await page.clock.fastForward(8000);
+  await expect(page.locator('.mt-alert')).toBeVisible();
+  expect(await page.evaluate(() => window.__alarm.filter((a) => a[0] === 'ring').length)).toBe(0);
+  await page.locator('.mt-ax').click();
+  // the start time: the loud one
+  await page.clock.fastForward(4 * 60000);
+  await expect(page.locator('.mt-when')).toHaveText('Começando agora');
+  expect(await page.evaluate(() => window.__alarm.find((a) => a[0] === 'ring'))).toEqual(['ring', 'Hora de entrar na reunião. Revisão do projeto Federano']);
+  await page.locator('.mt-ax').click();
+  expect(await page.evaluate(() => window.__alarm.at(-1))).toEqual(['stop']);
+});
