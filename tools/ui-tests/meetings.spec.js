@@ -58,3 +58,29 @@ test('at the start time a loud alarm rings (with the tablet sound off), and clos
   await page.locator('.mt-ax').click();
   expect(await page.evaluate(() => window.__alarm.at(-1))).toEqual(['stop']);
 });
+
+test('four looks, switched by the corner button and kept on the tablet', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto('/panel/');
+  await page.evaluate(() => {
+    localStorage.clear();
+    localStorage.setItem('federano.ftheme', '01');
+    localStorage.setItem('pb-demo-config', JSON.stringify({ night: { enabled: false }, shortcuts: [],
+      pages: [{ id: 'reunioes', title: 'Reuniões', enabled: true, widgets: [{ id: 'm', type: 'meetings', x: 0, y: 0, w: 12, h: 6, options: { alertMin: 0 } }] }] }));
+  });
+  await page.reload();
+  await expect(page.locator('.mt-ev')).toHaveCount(3);
+  for (const [name, sel] of [['Linha do tempo', '.mt-a-tl .blk'], ['Foco na próxima', '.mt-a-cd.huge'], ['Relógio do dia', '.mt-a-dial'], ['Lista', '.mt-ev']]) {
+    await page.locator('.mt-lookbtn').click();
+    await expect(page.locator('.mt-lookbtn')).toContainText(name);
+    await expect(page.locator(sel).first()).toBeVisible();
+    await page.waitForTimeout(1200);
+    await page.screenshot({ path: test.info().outputPath(`look-${name.replace(/ /g, '-')}.png`) });
+  }
+  // the choice stays after a restart
+  await page.locator('.mt-lookbtn').click();
+  await page.reload();
+  await expect(page.locator('.mt-lookbtn')).toContainText('Linha do tempo');
+  expect(errors).toEqual([]);
+});
