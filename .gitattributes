@@ -4,3 +4,4 @@
 *.png binary
 *.ico binary
 *.jar binary
+graphify-out/graph.json merge=graphify
