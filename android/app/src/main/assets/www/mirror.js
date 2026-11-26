@@ -496,7 +496,14 @@ function showOffer(offer) {
 }
 
 // while "Só ouvir" is on, the next videos (a YouTube playlist) are not offered again
-const listening = () => { try { return localStorage.getItem('federano.listenVideo') === '1'; } catch (_) { return false; } };
+const listening = () => {
+  try { if (localStorage.getItem('federano.listenVideo') === '1') return true; } catch (_) {}
+  // the "Só ouvir" screen is in view: that video is already being listened to here
+  const ly = document.querySelector('.w.ly.ly-video');
+  if (!ly) return false;
+  const r = ly.getBoundingClientRect();
+  return r.width > 0 && r.left < innerWidth / 2 && r.right > innerWidth / 2;
+};
 async function pollOffer() {
   if (!overlay && !offerEl && !document.body.classList.contains('night')) {
     try {

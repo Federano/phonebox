@@ -23,7 +23,7 @@ test('"Só ouvir" opens the lyrics page with the video as sound only, and asks n
       const json = (d) => Promise.resolve(new Response(JSON.stringify(d), { headers: { 'Content-Type': 'application/json' } }));
       if (u.includes('/mirror/offer/answer')) { window.__asks.push(u.replace(/^.*\/api/, '')); return json({ ok: true, mirror: false }); }
       if (u.includes('/mirror/offer')) { window.__offers++; return json({ offer: { id: 'v1', title: 'Lo-fi para estudar', app: 'Chrome', seconds: 30, artId: 0 } }); }
-      if (u.includes('/lyrics/now')) return json(u.includes('any=true')
+      if (u.includes('/lyrics/now')) return json(u.includes('any=true') && !window.__gap
         ? { playing: true, key: 'video|Chrome|Lo-fi para estudar', kind: 'video', media: { app: 'Chrome', title: 'Lo-fi para estudar', artist: 'Canal Calmo', album: '', playing: true, posMs: 1000, durMs: 3600000, artId: 0, canSeek: true, ageMs: 0 },
             lyrics: { lines: [], plain: '', instrumental: false, found: false }, pending: false, posOffsetMs: 0 }
         : { playing: false, other: 'Chrome' });
@@ -42,6 +42,13 @@ test('"Só ouvir" opens the lyrics page with the video as sound only, and asks n
   const offers = await page.evaluate(() => window.__offers);
   await page.waitForTimeout(4500);
   await expect(page.locator('.offer')).toHaveCount(0);   // still asked, never shown again while listening
+  // the gap between two clips (nothing playing for a moment) keeps "Só ouvir" on: the next clip is not offered
+  await page.evaluate(() => { window.__gap = true; });
+  await page.waitForTimeout(4000);
+  await page.evaluate(() => { window.__gap = false; });
+  expect(await page.evaluate(() => localStorage.getItem('federano.listenVideo'))).toBe('1');
+  await page.waitForTimeout(2500);
+  await expect(page.locator('.offer')).toHaveCount(0);
   expect(await page.evaluate(() => window.__offers)).toBeGreaterThan(offers);
   expect(errors).toEqual([]);
 });

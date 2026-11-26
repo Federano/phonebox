@@ -587,6 +587,7 @@ W.lyrics = {
       const y = el.offsetTop + (el.offsetParent === inner ? inner.offsetTop : 0);
       glide(Math.max(0, Math.min(list.scrollHeight - list.clientHeight, y + el.offsetHeight / 2 - list.clientHeight / 2)));
     }
+    let quietSince = 0;
     async function poll() {
       if (!alive) return;
       if (visible() || !key) {
@@ -594,8 +595,10 @@ W.lyrics = {
           const listen = (() => { try { return localStorage.getItem('federano.listenVideo') === '1'; } catch (_) { return false; } })();
           const r = await fetch(`${API}/lyrics/now?have=${encodeURIComponent(key)}${listen ? '&any=true' : ''}`, { cache: 'no-store', headers: PANEL_HEADERS });
           const j = await r.json();
-          // "Só ouvir" ends when nothing plays any more or Spotify takes over
-          if (!j.playing || j.media?.app === 'Spotify') { try { localStorage.removeItem('federano.listenVideo'); } catch (_) {} }
+          // "Só ouvir" ends when Spotify takes over or nothing has played for a minute (the gap between two clips of a
+          // YouTube playlist does not end it, so the next clip is not offered again)
+          if (j.playing) quietSince = 0; else if (!quietSince) quietSince = Date.now();
+          if (j.media?.app === 'Spotify' || (quietSince && Date.now() - quietSince > 60000)) { try { localStorage.removeItem('federano.listenVideo'); } catch (_) {} }
           box.classList.toggle('ly-video', j.kind === 'video');
           if (!j.playing) {
             setPod(false); m = null; key = ''; box.classList.add('ly-idle'); title.textContent = 'Nada tocando no Spotify'; artist.textContent = ''; setArt('', false);
