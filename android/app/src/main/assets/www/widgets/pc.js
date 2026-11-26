@@ -498,11 +498,16 @@ W.agenda = {
       const until = new Date(today.getFullYear(), today.getMonth(), today.getDate() + wholeDays).getTime() + (days - wholeDays) * 864e5;
       const list = (cal?.events || []).filter((e) => e.end > now && e.start < until && (!only.length || only.includes(e.calendar.toLowerCase())));
       const small = box.clientHeight < 110;
-      const key = JSON.stringify([list.map((e) => e.start + e.title), Math.floor(now / 30000), small, box.clientHeight]);
+      const key = JSON.stringify([list, Math.floor(now / 30000), small, box.clientHeight, cal?.source, cal?.error, cal?.calendars]);
       if (key === lastKey) return;
       lastKey = key;
       box.classList.toggle('small', small);
       if (!cal) { box.replaceChildren(h('div', 'empty', t('w.loading'))); return; }
+      if (cal.source === 'tablet' && !list.length && (cal.error || !cal.calendars)) {
+        box.replaceChildren(h('div', 'w-title', o.title || en('Agenda')),
+          h('div', 'empty', cal.error || 'Escolha uma conta da agenda no tablet.'));
+        return;
+      }
       if (!cal.updated && !list.length) { box.replaceChildren(h('div', 'w-title', o.title || en('Agenda')), h('div', 'empty', 'Add a calendar in Settings › General')); return; }
       const timed = list.filter((e) => !e.allDay);
       const cur = timed.find((e) => e.start <= now);

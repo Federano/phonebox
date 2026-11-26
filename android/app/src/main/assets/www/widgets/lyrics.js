@@ -1,4 +1,4 @@
-import { API, D, PANEL_HEADERS, api, averageColor, curPage, h, haptic, media as liveMedia, pages, streaming, toast } from '../main.js';
+import { API, D, PANEL_HEADERS, api, averageColor, curPage, h, haptic, idle, media as liveMedia, pages, streaming, toast } from '../main.js';
 import { W } from '../registry.js';
 
 // ---------------------------------------------------------------- Federano "Letra"
@@ -67,7 +67,7 @@ function voiceWave(g, W, H, st, cols) {
   }
 }
 
-// Federano, Tema 01 (Minimalista): pure black, two red lines waving with the music (with the voice on a podcast) and a
+// Federano, Tema 01 (Minimalista): pure black, red lines waving with the music (with the voice on a podcast) and a
 // very faint red light breathing on the beat
 function minimalBg(g, W, H, st) {
   g.clearRect(0, 0, W, H);
@@ -75,16 +75,18 @@ function minimalBg(g, W, H, st) {
   const gr = g.createRadialGradient(W * .5, H * 1.05, 0, W * .5, H * 1.05, H * .9);
   gr.addColorStop(0, `rgba(255,42,79,${(.06 + .04 * Math.sin(t * .8) + .07 * beat).toFixed(3)})`); gr.addColorStop(1, 'rgba(255,42,79,0)');
   g.fillStyle = gr; g.fillRect(0, 0, W, H);
-  for (let k = 0; k < 2; k++) {
+  // five sound lines (music and podcast alike): the bright one in front, four fainter ones around it, each on its own beat
+  const LINES = [[0, 1, .7, 1.6], [-7, .75, .32, 1.1], [7, .6, .26, 1], [-15, .45, .16, .9], [15, .35, .12, .8]];
+  LINES.forEach(([dy, size, alpha, width], k) => {
     g.beginPath();
     for (let x = 0; x <= W; x += 6 * s) {
-      const amp = (st.pod ? (2 + 22 * lvl) : (6 + 14 * lvl) * (1 + 1.4 * beat)) * (k ? .6 : 1) * s;
-      const y = H * .9 + k * 10 * s + Math.sin(x / s * .013 + t * (1.6 + k * .4)) * amp * Math.sin(t * .7 + x / s * .004 + k);
+      const amp = (st.pod ? (2 + 22 * lvl) : (6 + 14 * lvl) * (1 + 1.4 * beat)) * size * s;
+      const y = H * .9 + dy * s + Math.sin(x / s * (.013 + k * .002) + t * (1.6 + k * .35)) * amp * Math.sin(t * (.7 + k * .1) + x / s * .004 + k * 1.3);
       x ? g.lineTo(x, y) : g.moveTo(x, y);
     }
-    g.strokeStyle = k ? 'rgba(255,42,79,.22)' : 'rgba(255,42,79,.7)'; g.lineWidth = (k ? 1 : 1.6) * s; g.stroke();
+    g.strokeStyle = `rgba(255,42,79,${alpha})`; g.lineWidth = width * s; g.stroke();
     if (!k) { g.lineWidth = 6 * s; g.globalAlpha = .12; g.stroke(); g.globalAlpha = 1; }
-  }
+  });
 }
 
 // the worker's own loop: same smoothing and beat as on the page; the page only sends the sound levels and the state
@@ -173,6 +175,12 @@ W.lyrics = {
   create(box, { page }) {
     box.classList.add('ly');
     const img = h('img', 'ly-photo'); img.alt = '';
+    // The chosen photo effect: two decorative copies stay inside the existing picture area.
+    const artLayers = [0, 1].map(() => {
+      const layer = h('img', 'ly-art-layer'); layer.alt = ''; layer.setAttribute('aria-hidden', 'true'); layer.decoding = 'async'; return layer;
+    });
+    const pic = h('div', 'ly-pic', ...artLayers, img);
+    let artVersion = 0, cinemaReady = false, artTrack = '';
     const chip = h('div', 'ly-chip', '');
     const trBtn = h('button', 'ly-tr', h('i'), 'Tradução'); trBtn.hidden = true;
     // discreet full-screen switch: only the lyrics, centred, bigger (the card with the photo and controls goes away)
@@ -188,7 +196,7 @@ W.lyrics = {
       fsBtn.title = fsBtn.getAttribute('aria-label');
     };
     applyFs();
-    fsBtn.onclick = () => { haptic(); fullOnly = !fullOnly; applyFs(); try { localStorage.setItem('federano.lyricsFull', fullOnly ? '1' : '0'); } catch (_) {} active = -2; };
+    fsBtn.onclick = () => { haptic(); fullOnly = !fullOnly; applyFs(); syncCinema(); try { localStorage.setItem('federano.lyricsFull', fullOnly ? '1' : '0'); } catch (_) {} active = -2; };
     const title = h('div', 'ly-title', '');
     const artist = h('div', 'ly-artist', '');
     const fill = h('i');
@@ -306,7 +314,7 @@ W.lyrics = {
     if (!reducedMotion.matches) raf = requestAnimationFrame(animate);
     box.append(
       h('div', 'ly-main', bgPhoto, h('div', 'ly-bgveil'), fx, vig, h('div', 'ly-top', h('div', 'ly-chipw', chip, h('span', 'ly-talk', h('b'), h('b'), h('b'))), h('div', 'ly-topr', trBtn, fsBtn)), h('div', 'ly-words', list, note, pod)),
-      h('div', 'ly-card', h('div', 'ly-pic', img), h('div', 'ly-meta', title, artist), h('div', 'ly-prog', bar, times), ctl, ctl2, qHead, queue, sheet));
+      h('div', 'ly-card', pic, h('div', 'ly-meta', title, artist), h('div', 'ly-prog', bar, times), ctl, ctl2, qHead, queue, sheet));
     // the next songs; tapping one plays it (Spotify connected in the settings)
     let qKey = '', lastQueue = [];
     function fillQueue(items, nowTitle) {
@@ -341,6 +349,14 @@ W.lyrics = {
 
     let lastArtistPending = false, follow = false, alive = true, key = '', pendingKey = '', lines = [], active = -2, m = null, at = 0, artId = -1, timer = 0;
     const visible = () => pages[curPage] === page && !document.body.classList.contains('night');
+    function syncCinema() {
+      const enabled = cinemaReady && !podMode && m?.app === 'Spotify';
+      pic.classList.toggle('ly-cinema', enabled);
+      pic.classList.toggle('ly-cinema-playing', enabled && alive && !!m?.playing && visible() && !idle() && !fullOnly && !reducedMotion.matches);
+    }
+    document.addEventListener('visibilitychange', syncCinema);
+    if (reducedMotion.addEventListener) reducedMotion.addEventListener('change', syncCinema);
+    else reducedMotion.addListener(syncCinema);
     // offset: how far Windows' position runs behind the player's own clock (the agent measures it for Spotify)
     let offset = 0;
     const pos = () => !m ? 0 : Math.min(m.durMs || Infinity, m.posMs + (m.ageMs || 0) + (m.playing ? performance.now() - at + offset : 0));
@@ -363,6 +379,7 @@ W.lyrics = {
       bPlay.innerHTML = m && m.playing ? SVG.pause : SVG.play;
       box.classList.toggle('ly-paused', !!m && !m.playing);
       if (m) chip.textContent = `● ${podMode ? 'Podcast' : (m.app || 'PC')} · ${m.playing ? 'tocando' : 'pausado'}`;
+      syncCinema();
     };
     const jumpTo = (ms) => { if (!m) return; m = { ...m, posMs: Math.max(0, Math.min(m.durMs || Infinity, ms)), ageMs: 0 }; at = performance.now(); active = -2; draw(); };
     bPlay.onclick = () => media('playpause', '', () => { if (m) { m = { ...m, posMs: pos(), ageMs: 0, playing: !m.playing }; at = performance.now(); showPlay(); } });
@@ -441,6 +458,8 @@ W.lyrics = {
     plClose.onclick = () => { haptic(); sheet.hidden = true; };
     const setPod = (on) => {
       podMode = on; box.classList.toggle('ly-podcast', on); pod.hidden = !on;
+      if (on) artTrack = '';
+      syncCinema();
       setSkips(on ? 15000 : 10000, on ? 30000 : 10000);
       bPrev.setAttribute('aria-label', on ? 'Episódio anterior' : 'Música anterior'); bNext.setAttribute('aria-label', on ? 'Próximo episódio' : 'Próxima música');
     };
@@ -476,12 +495,28 @@ W.lyrics = {
     });
 
     function setArt(src, isArtist) {
-      if (img.dataset.src !== (src || '') && img.dataset.src) { const pic = img.parentElement; pic.classList.remove('ly-wipe'); void pic.offsetWidth; pic.classList.add('ly-wipe'); }
-      if (img.dataset.src === src) return;
-      img.dataset.src = src || '';
-      box.classList.toggle('ly-noart', !src);
+      src = src || '';
       box.classList.toggle('ly-artist-photo', !!isArtist);
-      img.onload = () => paintBg(img);
+      if (!src) artTrack = '';
+      if (img.dataset.src === src) { syncCinema(); return; }
+      if (img.dataset.src) { pic.classList.remove('ly-wipe'); void pic.offsetWidth; pic.classList.add('ly-wipe'); }
+      const version = ++artVersion;
+      cinemaReady = false;
+      artLayers.forEach((layer) => layer.removeAttribute('src'));
+      syncCinema();
+      img.dataset.src = src;
+      box.classList.toggle('ly-noart', !src);
+      img.onload = () => {
+        if (!alive || version !== artVersion || !src || img.currentSrc !== img.src) return;
+        paintBg(img);
+        artLayers.forEach((layer) => { layer.src = img.currentSrc || img.src; });
+        cinemaReady = true; syncCinema();
+      };
+      img.onerror = () => {
+        if (!alive || version !== artVersion) return;
+        cinemaReady = false; artLayers.forEach((layer) => layer.removeAttribute('src'));
+        box.classList.add('ly-noart'); paintBg(null); syncCinema();
+      };
       if (src) img.src = src; else { img.removeAttribute('src'); paintBg(null); }
     }
     function tint() {
@@ -556,8 +591,12 @@ W.lyrics = {
       if (!alive) return;
       if (visible() || !key) {
         try {
-          const r = await fetch(`${API}/lyrics/now?have=${encodeURIComponent(key)}`, { cache: 'no-store', headers: PANEL_HEADERS });
+          const listen = (() => { try { return localStorage.getItem('federano.listenVideo') === '1'; } catch (_) { return false; } })();
+          const r = await fetch(`${API}/lyrics/now?have=${encodeURIComponent(key)}${listen ? '&any=1' : ''}`, { cache: 'no-store', headers: PANEL_HEADERS });
           const j = await r.json();
+          // "Só ouvir" ends when nothing plays any more or Spotify takes over
+          if (!j.playing || j.media?.app === 'Spotify') { try { localStorage.removeItem('federano.listenVideo'); } catch (_) {} }
+          box.classList.toggle('ly-video', j.kind === 'video');
           if (!j.playing) {
             setPod(false); m = null; key = ''; box.classList.add('ly-idle'); title.textContent = 'Nada tocando no Spotify'; artist.textContent = ''; setArt('', false);
             chip.textContent = ''; trBtn.hidden = true; lastQueue = []; fillQueue([]);
@@ -573,11 +612,12 @@ W.lyrics = {
             chip.textContent = `● ${m.app || 'PC'} · ${m.playing ? 'tocando' : 'pausado'}`;
             total.textContent = m.durMs > 0 ? clock(m.durMs) : '';
             showPlay();
-            if (j.kind === 'episode' && j.episode) {
+            if (j.kind === 'video') j.episode = { name: m.title, show: m.artist || m.app || 'Vídeo', publisher: 'Só o som · vídeo no PC', description: '', date: '', image: null, durationMs: m.durMs };
+            if ((j.kind === 'episode' || j.kind === 'video') && j.episode) {
               const ep = j.episode;
               setPod(true);
               title.textContent = ep.name || m.title; artist.textContent = ep.show || m.artist || '';
-              chip.textContent = `● Podcast · ${m.playing ? 'tocando' : 'pausado'}`;
+              chip.textContent = `● ${j.kind === 'video' ? 'Vídeo' : 'Podcast'} · ${m.playing ? 'tocando' : 'pausado'}`;
               pShow.textContent = ep.show || '';
               if (pName.dataset.t !== (ep.name || m.title)) { pName.dataset.t = ep.name || m.title; pName.replaceChildren(...pName.dataset.t.split(' ').flatMap((w, j) => { const s2 = h('span', 'ly-w', w); s2.style.animationDelay = (j * 80) + 'ms'; return [s2, ' ']; })); }
               pMeta.textContent = [niceDate(ep.date), ep.durationMs > 0 ? longTime(ep.durationMs) : '', ep.publisher].filter(Boolean).join(' · ');
@@ -591,6 +631,9 @@ W.lyrics = {
               return;
             }
             setPod(false);
+            const nextArtTrack = j.key || `${m.app}|${m.title}|${m.artist}`;
+            if (j.artistPending && nextArtTrack !== artTrack) setArt(m.artId ? `${API}/art?v=${m.artId}` : '', false);
+            artTrack = nextArtTrack;
             if (!j.artistPending) setArt(j.artistImage || (m.artId ? `${API}/art?v=${m.artId}` : ''), !!j.artistImage);
             tint();
             if (j.key !== key) {
@@ -631,11 +674,17 @@ W.lyrics = {
     // Tema 01 reserves space below the lyrics. Re-centre the same line when that reading area changes.
     const themeChanged = () => { active = -2; draw(); };
     window.addEventListener('federano-theme', themeChanged);
-    const ticker = setInterval(() => { if (visible()) { follow2(); draw(); } }, 150);
+    const ticker = setInterval(() => { syncCinema(); if (visible()) { follow2(); draw(); } }, 150);
     poll();
     return {
       update() {},
-      destroy() { alive = false; clearTimeout(timer); clearInterval(ticker); cancelAnimationFrame(raf); window.removeEventListener('federano-theme', themeChanged); if (worker) worker.terminate(); },
+      destroy() {
+        alive = false; artVersion++; img.onload = null; img.onerror = null; artLayers.forEach((layer) => layer.removeAttribute('src')); syncCinema();
+        clearTimeout(timer); clearInterval(ticker); cancelAnimationFrame(raf);
+        window.removeEventListener('federano-theme', themeChanged); document.removeEventListener('visibilitychange', syncCinema);
+        if (reducedMotion.removeEventListener) reducedMotion.removeEventListener('change', syncCinema); else reducedMotion.removeListener(syncCinema);
+        if (worker) worker.terminate();
+      },
     };
   },
 };

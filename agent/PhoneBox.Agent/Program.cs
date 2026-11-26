@@ -907,10 +907,11 @@ app.MapPost("/api/browser/youtube", (string? v, double? t, bool? playing, string
     double? rfx, double? rfy, double? rfw, double? rfh, double? rar, YouTubeTracker yt, MirrorCapture mirror) =>
 {
     if (tab is { } rt && rfx is { } a && rfy is { } b && rfw is { } c && rfh is { } d && rar is { } e) yt.UpdatePageRect(rt, new(a, b, c, d, e));
-    if (tab is { } tb) yt.ReportTab(tb, playing == true);
+    // Federano: a video starting in another tab while one is shown on the tablet pauses the tablet's one (no two sounds at once)
+    if (tab is { } tb && yt.ReportTab(tb, playing == true) && mirror.BrowserTab is { } shown && shown != tb) yt.RequestPauseTab(shown);
     // the playing video's rectangle in the browser window, for mirroring (any site); nothing else is kept
     if (playing == true && x is { } rx && y is { } ry && w is { } rw && h is { } rh) yt.UpdateRect(rx, ry, rw, rh);
-    var pause = YouTubeTracker.ValidId(v) && t is { } time && yt.Update(v!, time, playing == true, title);
+    var pause = (YouTubeTracker.ValidId(v) && t is { } time && yt.Update(v!, time, playing == true, title)) | (tab is { } pt && yt.TakePauseTab(pt) && playing == true);
     return Results.Json(new { pause, mirror = tab is { } mt && mirror.WantsTab(mt) });
 });
 
@@ -965,9 +966,13 @@ app.MapGet("/api/mirror/frame", async (long? after, HttpResponse res, MirrorCapt
 
 // Federano "Letra" page: what is playing, the artist's photo (Spotify) and the timed lyrics (LRCLIB). The lyrics are left
 // out when the panel already has them ("have" = the song's key).
-app.MapGet("/api/lyrics/now", async (string? have, MediaMonitor media, LyricsService lyrics, SpotifyControl spotify, CancellationToken ct) =>
+app.MapGet("/api/lyrics/now", async (string? have, bool? any, MediaMonitor media, LyricsService lyrics, SpotifyControl spotify, CancellationToken ct) =>
 {
     var m = media.Snapshot();
+    // Federano "Só ouvir" (the video pop-up's third answer): a video on the PC shown as sound only, like a podcast
+    if (any == true && m is { Title.Length: > 0 } && m.App != "Spotify")
+        return Results.Json(new { playing = true, key = $"video|{m.App}|{m.Title}", kind = "video", media = m,
+            lyrics = new { lines = Array.Empty<object>(), plain = "", instrumental = false, found = false }, pending = false, posOffsetMs = 0 });
     // only Spotify: a video in the browser or another player leaves this page alone
     if (m is null || m.Title.Length == 0 || m.App != "Spotify") return Results.Json(new { playing = false, other = m?.App });
     var key = LyricsService.KeyOf(m.Title, m.Artist);

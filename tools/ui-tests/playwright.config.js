@@ -12,6 +12,8 @@ module.exports = defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never', outputFolder: path.join(root, 'ui-test-report') }]] : 'list',
   use: {
+    // Reuse a locally installed test browser when its revision differs from Playwright's default.
+    launchOptions: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {},
     baseURL: 'http://127.0.0.1:8781/',
     viewport: { width: 780, height: 360 },
     trace: 'retain-on-failure',

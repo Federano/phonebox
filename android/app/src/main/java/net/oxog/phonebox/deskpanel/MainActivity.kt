@@ -57,6 +57,18 @@ class MainActivity : Activity(), SensorEventListener {
     // Set first in onDestroy: dictation and stream callbacks already queued on the UI thread then skip the destroyed WebView.
     private var destroyed = false
     private val meetAlarm by lazy { MeetAlarm(this) }
+    private val tabletCalendar by lazy {
+        TabletCalendar(this, { id, result ->
+            runOnUiThread {
+                if (!destroyed) web.evaluateJavascript(
+                    "window.onFederanoCalendarResult && window.onFederanoCalendarResult($id, ${JSONObject.quote(result.toString())})", null)
+            }
+        }, {
+            runOnUiThread {
+                if (!destroyed) web.evaluateJavascript("window.onFederanoCalendarChanged && window.onFederanoCalendarChanged()", null)
+            }
+        })
+    }
     private val dictation by lazy { Dictation(this) { script -> if (!destroyed) web.evaluateJavascript(script, null) } }
     private lateinit var link: AgentLink
     private lateinit var stream: AgentStream
@@ -242,6 +254,7 @@ class MainActivity : Activity(), SensorEventListener {
         web.onResume()
         web.evaluateJavascript("window.onAppPause && window.onAppPause(false)", null) // the panel catches up at once
         stream.start()
+        tabletCalendar.start()
         hideSystemUi()
         sensors?.getDefaultSensor(Sensor.TYPE_LIGHT)?.let { sensors?.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
         sensors?.getDefaultSensor(Sensor.TYPE_PROXIMITY)?.let { sensors?.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
@@ -249,6 +262,7 @@ class MainActivity : Activity(), SensorEventListener {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (tabletCalendar.onPermissionResult(requestCode, grantResults)) return
         if (requestCode == Dictation.PERMISSION_REQUEST)
             dictation.onPermission(grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED)
     }
@@ -258,6 +272,7 @@ class MainActivity : Activity(), SensorEventListener {
         dictation.cancel(0) // the microphone is never left open behind another app or a dark screen
         sensors?.unregisterListener(this)
         stream.stop()
+        tabletCalendar.stop()
         // WebView.onPause() leaves JavaScript running: tell the panel to stop polling and refreshing while nobody sees it
         web.evaluateJavascript("window.onAppPause && window.onAppPause(true)", null)
         web.onPause()
@@ -274,6 +289,7 @@ class MainActivity : Activity(), SensorEventListener {
         stream.stop()
         link.trackpadSocket.close()
         link.close()
+        tabletCalendar.close()
         (web.parent as? ViewGroup)?.removeView(web) // a WebView must be detached before destroy()
         web.destroy()
         super.onDestroy()
@@ -322,6 +338,14 @@ class MainActivity : Activity(), SensorEventListener {
 
     inner class Bridge {
         private fun ok(key: String) = key == bridgeKey
+
+        /** Only the trusted panel can read the selected account's local calendar. */
+        @JavascriptInterface
+        fun calendarRequest(key: String, id: Int, operation: String, payload: String) {
+            if (!ok(key) || id <= 0 || payload.length > 4096 ||
+                operation !in setOf("state", "today", "connect", "choose", "disconnect", "refresh")) return
+            tabletCalendar.request(id, operation, payload)
+        }
 
         private val validTrackpadTypes = setOf("move", "click", "rightClick", "mousedown", "mouseup", "scroll", "hscroll")
 

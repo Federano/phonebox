@@ -9,8 +9,9 @@ Leia este arquivo inteiro antes de mudar qualquer coisa.
 
 1. **Nunca toque em `D:\VSCODE\AUTOFLOW`**, de jeito nenhum.
 2. **Nunca instale o app no tablet** (`adb install`) sem o Fernando pedir com as palavras "pode instalar".
-3. **Nada de mudança visual sem OK.** Mostre uma prévia (imagem ou página) e espere a aprovação antes de aplicar um
-   visual novo. Tema 00 (o atual) e Tema 01 (Minimalista) já existem; não mude o visual deles por conta própria.
+3. **Nada de mudança visual sem o Fernando escrever "pode instalar".** Mostre uma prévia (imagem ou página) e espere
+   essa autorização antes de aplicar um visual novo. Tema 00 (o atual) e Tema 01 (Minimalista) já existem; não mude
+   o visual deles por conta própria.
 4. Antes de mexer nas configurações do PC (`%APPDATA%\Federano\config.json`), faça uma cópia do arquivo.
 5. Trabalhe no branch **`federano`**. Não use o branch `main`. Não force push.
 6. Commits em português, começando com `Federano:` e dizendo o que mudou para o usuário, por exemplo

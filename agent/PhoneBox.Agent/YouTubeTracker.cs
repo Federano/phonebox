@@ -70,9 +70,33 @@ public sealed partial class YouTubeTracker
     // ---- Federano mirroring: the browser tab playing a video (the extension sends that tab's frames)
     private (int Tab, long At)? _playingTab;
 
-    public void ReportTab(int tab, bool playing)
+    private readonly Dictionary<int, bool> _tabPlaying = [];
+    private int? _pauseTab;
+
+    /// <summary>Stores a tab's report; returns true when this tab's video has just started playing.</summary>
+    public bool ReportTab(int tab, bool playing)
     {
-        lock (_gate) if (playing && tab >= 0) _playingTab = (tab, Stopwatch.GetTimestamp());
+        lock (_gate)
+        {
+            if (playing && tab >= 0) _playingTab = (tab, Stopwatch.GetTimestamp());
+            var started = playing && !_tabPlaying.GetValueOrDefault(tab);
+            if (_tabPlaying.Count > 50) _tabPlaying.Clear();
+            _tabPlaying[tab] = playing;
+            return started;
+        }
+    }
+
+    /// <summary>Federano: pause this tab's video at its next report (the mirrored video when another one starts on the PC).</summary>
+    public void RequestPauseTab(int tab) { lock (_gate) _pauseTab = tab; }
+
+    public bool TakePauseTab(int tab)
+    {
+        lock (_gate)
+        {
+            if (_pauseTab != tab) return false;
+            _pauseTab = null;
+            return true;
+        }
     }
 
     /// <summary>The tab that reported a playing video in the last few seconds.</summary>

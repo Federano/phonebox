@@ -1,6 +1,7 @@
 import { API, PANEL_HEADERS, bridge, buzz, curPage, gotoSkillPage, h, haptic, pages, toast } from '../main.js';
 import { W } from '../registry.js';
 import { openMirror } from '../mirror.js';
+import { tabletCalendar } from '../calendar-tablet.js';
 
 // ---------------------------------------------------------------- Federano "Reuniões"
 // Today's meetings from the calendars set up on the PC (the Google Calendar secret iCal address), the next one with a
@@ -25,14 +26,34 @@ const SVG = {
 
 // ---- shared data (one poll for the widget and the alert)
 let data = null, lastLoad = 0, loading = null;
+let pcCall = null, pcCallAt = 0;
 async function load(force) {
   if (!force && Date.now() - lastLoad < 15000 && data) return data;
   if (loading) return loading;
   const cal = String(opts().calendar || '').trim();
+  if (tabletCalendar.supported()) {
+    // Calendar data belongs to the selected tablet account. The PC only supplies call controls.
+    fetch(`${API}/meet`, { cache: 'no-store', headers: PANEL_HEADERS }).then((r) => r.ok ? r.json() : null)
+      .then((j) => { pcCall = j?.call || null; pcCallAt = Date.now(); if (data?.source === 'tablet') data.call = pcCall; })
+      .catch(() => { pcCall = null; if (data?.source === 'tablet') data.call = null; });
+    loading = tabletCalendar.today().then((j) => {
+      data = { ...(j || { today: [], calendars: false }), source: 'tablet', call: Date.now() - pcCallAt < 15000 ? pcCall : null };
+      lastLoad = Date.now(); return data;
+    }).catch(() => { data = { today: [], calendars: false, source: 'tablet', error: 'Não consegui ler a agenda do tablet.', call: null }; return data; })
+      .finally(() => { loading = null; });
+    return loading;
+  }
   loading = fetch(`${API}/meet${cal ? '?cal=' + encodeURIComponent(cal) : ''}`, { cache: 'no-store', headers: PANEL_HEADERS }).then((r) => r.json()).then((j) => { data = j; lastLoad = Date.now(); return j; })
     .catch(() => data).finally(() => { loading = null; });
   return loading;
 }
+tabletCalendar.subscribe(() => {
+  lastLoad = 0;
+  // A provider notification can arrive while the preceding query is still completing.
+  // Read again after that query rather than waiting for the normal polling interval.
+  if (loading) loading.then(() => { lastLoad = 0; load(true); });
+  else load(true);
+});
 const meetPage = () => pages.find((p) => (p.widgets || []).some((w) => w.type === 'meetings'));
 const opts = () => (meetPage()?.widgets || []).find((w) => w.type === 'meetings')?.options || {};
 
@@ -208,7 +229,8 @@ W.meetings = {
         return h('div', 'mt-ev' + (past ? ' past' : '') + (on ? ' on' : ''), h('span', 'mt-t', hm(ev.start)),
           h('div', null, h('b', null, ev.title), h('small', null, [durTxt(ev.start, ev.end), ev.meet ? 'Meet' : ev.location, ev.people ? `${ev.people} pessoas` : ''].filter(Boolean).join(' · '))), right);
       }));
-      note.textContent = !j.calendars && !evs.length ? 'Para ver suas reuniões, cole o endereço secreto iCal do Google Agenda nas configurações do Federano no PC (Geral › Calendários).'
+      note.textContent = j.source === 'tablet' && (j.error || !j.calendars) ? (j.error || 'Escolha a conta da agenda no tablet.')
+        : !j.calendars && !evs.length ? 'Para ver suas reuniões, cole o endereço secreto iCal do Google Agenda nas configurações do Federano no PC (Geral › Calendários).'
         : !evs.length ? 'Nenhuma reunião hoje.' : '';
       cur = evs.find((ev) => ev.end > now) || null;
       const call = j.call && j.call.inCall ? j.call : null;

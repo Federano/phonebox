@@ -3,6 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Read only; the user chooses one Google account already synchronized on this tablet. -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
     <!-- Federano: the bubble back to the mirrored video, over other apps (the user grants it in Android's settings) -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.VIBRATE" />

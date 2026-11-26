@@ -50,6 +50,7 @@ public sealed class MirrorCapture(ILogger<MirrorCapture> log, MediaMonitor media
 
     /// <summary>True when the extension in <paramref name="tab"/> should send its video's frames.</summary>
     public bool WantsTab(int tab) { lock (_gate) return _browserTab == tab; }
+    public int? BrowserTab { get { lock (_gate) return _browserTab; } }
 
     /// <summary>A frame of the locked tab's video, sent by the extension.</summary>
     public bool PushFrame(int tab, byte[] jpeg, long capturedAtMs = 0)

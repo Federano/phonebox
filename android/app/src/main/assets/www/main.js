@@ -2,6 +2,7 @@
 // they import what they need from here, so this module must not run code that needs them while it loads
 // (the start section at the end runs after every module has loaded).
 import { W } from './registry.js';
+import { tabletCalendar } from './calendar-tablet.js';
 import './appearance.js';
 import { cached } from './widgets/helpers.js';
 import './widgets/basic.js';
@@ -2160,8 +2161,10 @@ export async function loadConfig() {
 const localDay = (ms) => { const d = new Date(ms); return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()).getTime(); };
 export async function loadCalendar() {
   try {
-    const cal = await api('/calendar');
-    cal.events = (cal.events || []).map((e) => (e.allDay ? { ...e, start: localDay(e.start), end: localDay(e.end) } : e)).sort((a, b) => a.start - b.start);
+    const native = tabletCalendar.supported();
+    const cal = (native ? await tabletCalendar.today() : await api('/calendar')) || { events: [], calendars: false, source: 'tablet' };
+    if (native) cal.updated = cal.updatedAt || Date.now();
+    cal.events = (cal.events || []).map((e) => (!native && e.allDay ? { ...e, start: localDay(e.start), end: localDay(e.end) } : e)).sort((a, b) => a.start - b.start);
     D.calendar = cal;
     emit('calendar');
   } catch (_) {}
@@ -2293,10 +2296,11 @@ window.onAppPause = (paused) => {
 document.addEventListener('visibilitychange', () => { if (!document.hidden && !appPaused) wokeUp(); });
 // what the paused panel skipped is fetched at once, not at the next interval
 function wokeUp() {
+  if (tabletCalendar.supported()) loadCalendar();
   if (!online) return;
   loadConfig(); loadPush(); loadApprovals();
   if (anyNeeds('quotas')) loadQuotas();
-  if (anyNeeds('calendar')) loadCalendar();
+  if (!tabletCalendar.supported() && anyNeeds('calendar')) loadCalendar();
   if (anyNeeds('work') && !streaming()) loadWork();
 }
 
@@ -2341,7 +2345,7 @@ loadWeather();
 setInterval(loadWeather, 15 * 60_000);
 setInterval(() => { if (!nightOn && !idle()) { emit('fast'); beat(); } }, 250);
 setInterval(() => { if (online && !idle() && anyNeeds('quotas')) loadQuotas(); }, 30_000);
-setInterval(() => { if (online && !idle() && anyNeeds('calendar')) loadCalendar(); }, 120_000);
+setInterval(() => { if ((online || tabletCalendar.supported()) && !idle() && anyNeeds('calendar')) loadCalendar(); }, 30_000);
 setInterval(() => { if (online && !idle() && anyNeeds('work') && !streaming()) loadWork(); }, 3000);
 setInterval(() => { if (idle()) return; if (online && pageOf('procs')) loadProcs(); if (online && sheet) loadSheet(); }, 2000);
 setInterval(() => { if (online && !idle()) loadConfig(); }, 60_000);
@@ -2353,6 +2357,17 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 poll();
+
+// The provider already keeps events offline. Observe it even when the PC cannot be reached.
+tabletCalendar.subscribe(() => { if (!idle()) loadCalendar(); });
+setTimeout(async () => {
+  if (PREVIEW || !tabletCalendar.supported()) return;
+  try {
+    const state = await tabletCalendar.state();
+    if (!state.configured && !state.setupAttempted) await tabletCalendar.connect();
+    await loadCalendar();
+  } catch (_) { /* The next explicit account action can retry without repeated permission prompts. */ }
+}, 1500);
 
 if (PREVIEW) {
   let weatherKey = '';

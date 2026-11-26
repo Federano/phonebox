@@ -1438,6 +1438,7 @@ body.controls-top .ap-foot { order: -1; margin-bottom: 4px; }
 .ly-card { min-width: 0; background: rgba(0, 0, 0, .28); padding: clamp(12px, 3cqmin, 22px) clamp(12px, 2.6cqmin, 20px); display: flex; flex-direction: column; gap: clamp(8px, 1.8cqmin, 12px); overflow: hidden; }
 .ly-pic { flex: 0 1 auto; min-height: 0; aspect-ratio: 4 / 3; max-height: 38%; border-radius: 14px; overflow: hidden; background: rgba(255, 255, 255, .08); }
 .ly-photo { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ly-art-layer { display: none; }
 .w.ly.ly-noart .ly-photo { visibility: hidden; }
 .ly-title { font-size: clamp(16px, 4.2cqmin, 26px); font-weight: 800; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ly-artist { font-size: clamp(11px, 2.6cqmin, 14px); color: rgba(255, 255, 255, .7); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1767,3 +1768,61 @@ body[data-ftheme="01"] .ly-ctl2 { margin-top: -2px; }
 .mt-a-list { flex: 1; min-width: 0; display: grid; gap: 10px; align-content: center; }
 .mt-a-list .li { padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; } .mt-a-list .li span { display: block; font-size: 12px; color: var(--muted); } .mt-a-list .li b { font-size: 15px; }
 .mt-a-list .li.next { border-color: var(--accent, #ff2a4f); box-shadow: 0 0 18px rgba(var(--ambient), .2); } .mt-a-list .li.past { opacity: .4; }
+
+/* Federano: Cinema em camadas, chosen for the Spotify photo. All layers stay inside this picture's clip. */
+.w.ly .ly-pic.ly-cinema { position: relative; isolation: isolate; }
+.w.ly .ly-pic.ly-cinema::after { display: none; }
+.w.ly .ly-pic.ly-cinema .ly-photo,
+.w.ly .ly-pic.ly-cinema .ly-art-layer { position: absolute; left: 8%; top: 8%; width: 84%; height: 84%; object-fit: cover; border-radius: inherit; pointer-events: none; animation-play-state: paused; }
+.w.ly .ly-pic.ly-cinema .ly-photo { z-index: 3; box-shadow: 0 8px 14px rgba(0, 0, 0, .25); animation: ly-cinema-front 8s ease-in-out infinite alternate paused; }
+.w.ly .ly-pic.ly-cinema .ly-art-layer { display: block; z-index: 1; opacity: .4; animation: ly-cinema-back-left 8s ease-in-out infinite alternate paused; }
+.w.ly .ly-pic.ly-cinema .ly-art-layer:nth-child(2) { z-index: 2; opacity: .3; animation-name: ly-cinema-back-right; }
+.w.ly .ly-pic.ly-cinema.ly-cinema-playing .ly-photo,
+.w.ly .ly-pic.ly-cinema.ly-cinema-playing .ly-art-layer { animation-play-state: running; }
+@keyframes ly-cinema-front { from { transform: translateY(1%) scale(.98); } to { transform: translateY(-1%) scale(1.035); } }
+@keyframes ly-cinema-back-left { from { transform: translate(-2%, 1%) rotate(-3deg); opacity: .35; } to { transform: translate(-5%, 1%) rotate(-7deg); opacity: .48; } }
+@keyframes ly-cinema-back-right { from { transform: translate(2%, -1%) rotate(3deg); opacity: .24; } to { transform: translate(5%, -1%) rotate(6deg); opacity: .36; } }
+@media (prefers-reduced-motion: reduce) {
+  .w.ly .ly-pic.ly-cinema .ly-photo,
+  .w.ly .ly-pic.ly-cinema .ly-art-layer { animation: none; }
+  .w.ly .ly-pic.ly-cinema .ly-art-layer { transform: translate(-2%, 1%) rotate(-3deg); }
+  .w.ly .ly-pic.ly-cinema .ly-art-layer:nth-child(2) { transform: translate(2%, -1%) rotate(3deg); }
+}
+
+/* Tema 01: the "Ver no tablet?" pop-up. Black glass, thin lines, one red. It rises in sharp from a blur, its parts arrive
+   one after another, and a red line along the bottom runs out with the countdown. */
+body[data-ftheme="01"] .offer-scrim { background: rgba(0, 0, 0, .6); }
+body[data-ftheme="01"] .offer { top: auto; bottom: 7vh; gap: 22px; padding: 16px 18px; border-radius: 18px; overflow: hidden;
+  background: rgba(8, 8, 10, .92); border: 1px solid #1c1c1f; box-shadow: 0 24px 70px rgba(0, 0, 0, .75);
+  transform: translate(-50%, 60px); filter: blur(10px); transition: transform .55s cubic-bezier(.16, 1, .3, 1), opacity .35s, filter .45s; }
+body[data-ftheme="01"] .offer.in { transform: translate(-50%, 0); filter: blur(0); }
+body[data-ftheme="01"] .offer.out { transform: translate(-50%, 40px); filter: blur(8px); transition: transform .35s ease-in, opacity .3s, filter .3s; }
+body[data-ftheme="01"] .offer::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: #ff2a4f; transform-origin: left;
+  animation: m01-offer-time var(--offer-secs, 5s) linear .3s forwards; }
+@keyframes m01-offer-time { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+body[data-ftheme="01"] .offer-thumb { width: 132px; height: 84px; border-radius: 10px; box-shadow: none; border: 1px solid #1c1c1f; clip-path: inset(0 100% 0 0 round 10px); }
+body[data-ftheme="01"] .offer.in .offer-thumb { clip-path: inset(0 0 0 0 round 10px); transition: clip-path .7s cubic-bezier(.16, 1, .3, 1) .12s; }
+body[data-ftheme="01"] .offer-thumb img { transform: scale(1.15); }
+body[data-ftheme="01"] .offer.in .offer-thumb img { transform: scale(1); transition: transform 1.2s cubic-bezier(.16, 1, .3, 1) .12s; }
+body[data-ftheme="01"] .offer-q { color: #ff2a4f; font-weight: 500; font-size: 11px; letter-spacing: .22em; }
+body[data-ftheme="01"] .offer-title { font-weight: 300; font-size: 22px; letter-spacing: -.01em; }
+body[data-ftheme="01"] .offer-app { color: #8a8a90; font-size: 13px; }
+body[data-ftheme="01"] .offer-text > *, body[data-ftheme="01"] .offer-no, body[data-ftheme="01"] .offer-yes { opacity: 0; transform: translateY(10px); }
+body[data-ftheme="01"] .offer.in .offer-text > *, body[data-ftheme="01"] .offer.in .offer-no, body[data-ftheme="01"] .offer.in .offer-yes {
+  opacity: 1; transform: none; transition: opacity .4s, transform .5s cubic-bezier(.16, 1, .3, 1); }
+body[data-ftheme="01"] .offer.in .offer-q { transition-delay: .18s; }
+body[data-ftheme="01"] .offer.in .offer-title { transition-delay: .24s; }
+body[data-ftheme="01"] .offer.in .offer-app { transition-delay: .3s; }
+body[data-ftheme="01"] .offer.in .offer-no { transition-delay: .36s; }
+body[data-ftheme="01"] .offer.in .offer-yes { transition-delay: .42s; }
+body[data-ftheme="01"] .offer-no { background: transparent; border: 1px solid #2a2a2e; border-radius: 12px; font-weight: 400; color: #c8c8cc; }
+body[data-ftheme="01"] .offer-yes { background: #ff2a4f; color: #fff; border-radius: 12px; font-weight: 500; box-shadow: 0 0 0 0 rgba(255, 42, 79, .5); }
+body[data-ftheme="01"] .offer.in .offer-yes { animation: m01-offer-pulse 1.6s ease-out .9s infinite; }
+@keyframes m01-offer-pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 42, 79, .45); } 100% { box-shadow: 0 0 0 14px rgba(255, 42, 79, 0); } }
+body[data-ftheme="01"] .offer-ring-bg { stroke: rgba(255, 255, 255, .18); stroke-width: 3; }
+body[data-ftheme="01"] .offer-ring-fg { stroke: #fff; stroke-width: 3; }
+body[data-ftheme="01"] .offer-count { font-weight: 400; }
+@media (prefers-reduced-motion: reduce) { body[data-ftheme="01"] .offer, body[data-ftheme="01"] .offer * { transition: none !important; animation: none !important; filter: none !important; clip-path: none !important; } }
+
+/* Federano "Só ouvir": a video's sound on the podcast screen; Spotify's own buttons do not apply to it */
+.w.ly.ly-video .ly-ctl2, .w.ly.ly-video .ly-talk { display: none !important; }

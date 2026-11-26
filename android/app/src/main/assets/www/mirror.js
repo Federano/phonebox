@@ -423,6 +423,7 @@ function showOffer(offer) {
   const secs = Math.max(2, Number(offer.seconds) || 5);
   const card = document.createElement('div');
   card.className = 'offer';
+  card.style.setProperty('--offer-secs', secs + 's');   // Tema 01: the red line under the card runs out with the countdown
   const thumb = document.createElement('div');
   thumb.className = 'offer-thumb';
   if (offer.artId) {
@@ -447,6 +448,10 @@ function showOffer(offer) {
   const no = document.createElement('button');
   no.className = 'offer-no';
   no.textContent = 'Agora não';
+  // "Só ouvir": music on YouTube without the picture; the lyrics page shows it like a podcast (title, photo, sound lines)
+  const ear = document.createElement('button');
+  ear.className = 'offer-no offer-ear';
+  ear.textContent = 'Só ouvir';
   const yes = document.createElement('button');
   yes.className = 'offer-yes';
   // countdown ring around the main button
@@ -455,7 +460,7 @@ function showOffer(offer) {
     `<circle cx="32" cy="32" r="${R}" class="offer-ring-fg" style="stroke-dasharray:${C};animation-duration:${secs}s"/></svg>` +
     `<span class="offer-count">${secs}</span><span class="offer-yes-label">Ver no tablet</span>`;
   const count = yes.querySelector('.offer-count');
-  card.append(thumb, text, no, yes);
+  card.append(thumb, text, no, ear, yes);
   const scrim = document.createElement('div');
   scrim.className = 'offer-scrim';
   document.body.append(scrim, card);
@@ -472,19 +477,25 @@ function showOffer(offer) {
     scrim.classList.remove('in');
     setTimeout(() => { card.remove(); scrim.remove(); if (offerEl === card) offerEl = null; }, 450);
     try {
-      const r = await fetch(`${API}/mirror/offer/answer?id=${encodeURIComponent(offer.id)}&yes=${answer}`,
+      const r = await fetch(`${API}/mirror/offer/answer?id=${encodeURIComponent(offer.id)}&yes=${answer === true}`,
         { method: 'POST', cache: 'no-store', headers: PANEL_HEADERS });
       const j = await r.json();
-      if (answer && j.mirror) openMirror(offer.title);
+      if (answer === 'listen') {
+        try { localStorage.setItem('federano.listenVideo', '1'); } catch (_) {}
+        if (gotoSkillPage('lyrics') < 0) toast('Adicione o widget Letra numa página para ouvir assim.', 'err');
+      } else if (answer && j.mirror) openMirror(offer.title);
       else if (answer && j.error) toast(j.error, 'err');
     } catch (_) {}
   };
   const timer = setTimeout(() => finish(false), secs * 1000);
   yes.onclick = () => { haptic(); finish(true); };
   no.onclick = () => { haptic(); finish(false); };
+  ear.onclick = () => { haptic(); finish('listen'); };
   scrim.onclick = () => finish(false);
 }
 
+// while "Só ouvir" is on, the next videos (a YouTube playlist) are not offered again
+const listening = () => { try { return localStorage.getItem('federano.listenVideo') === '1'; } catch (_) { return false; } };
 async function pollOffer() {
   if (!overlay && !offerEl && !document.body.classList.contains('night')) {
     try {
@@ -492,7 +503,7 @@ async function pollOffer() {
       if (r.ok) {
         const j = await r.json();
         if (j.open && !overlay) openMirror(j.title);            // started on the PC (Federano icon in Chrome)
-        else if (j.offer && !overlay && !offerEl) showOffer(j.offer);
+        else if (j.offer && !overlay && !offerEl && !listening()) showOffer(j.offer);
       }
     } catch (_) {}
   }
