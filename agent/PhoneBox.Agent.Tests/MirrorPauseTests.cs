@@ -30,6 +30,7 @@ public class VideoSongTests
     [InlineData("Yago Oproprio - Antes do Baile (prod. Patricio Sid)", "Yago Oproprio", "Antes do Baile", "Yago Oproprio")]
     [InlineData("Fabio Brazza ft. Victoria Brito - Prazeres artificiais (Prod. Paiva)", "Fabio Brazza", "Prazeres artificiais", "Fabio Brazza")]
     [InlineData("Rashid - Se o Mundo Acabar", "Rashid", "Se o Mundo Acabar", "Rashid")]
+    [InlineData("Fabio Brazza - FIC(ALI)GADO (Prod. NoShugah)", "Fabio Brazza", "FIC(ALI)GADO", "Fabio Brazza")]
     [InlineData("Helipa [Official Video]", "Yago Oproprio - Topic", "Helipa", "Yago Oproprio")]
     [InlineData("Yago Oproprio – La Noche (Clipe Oficial)", "Canal", "La Noche", "Yago Oproprio")]
     public void FindsSongAndArtist(string title, string channel, string song, string artist) =>

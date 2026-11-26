@@ -52,7 +52,7 @@ public sealed partial class LyricsService(ILogger<LyricsService> log)
     /// <summary>Federano "Só ouvir": the song and artist inside a music video's title ("Artist - Song (Clipe Oficial)").</summary>
     public static (string Song, string Artist) FromVideo(string title, string channel)
     {
-        var t = Regex.Replace(title, @"\s*[\(\[][^\)\]]*[\)\]]", "").Trim();
+        var t = Regex.Replace(title, @"\s+[\(\[][^\)\]]*[\)\]]", "").Trim();   // " (Clipe Oficial)", not "FIC(ALI)GADO"
         string song = t, artist = channel;
         var dash = Regex.Match(t, @"\s[-–—|]\s");
         if (dash.Success) { artist = t[..dash.Index]; song = t[(dash.Index + dash.Length)..]; }
