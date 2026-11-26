@@ -592,7 +592,7 @@ W.lyrics = {
       if (visible() || !key) {
         try {
           const listen = (() => { try { return localStorage.getItem('federano.listenVideo') === '1'; } catch (_) { return false; } })();
-          const r = await fetch(`${API}/lyrics/now?have=${encodeURIComponent(key)}${listen ? '&any=1' : ''}`, { cache: 'no-store', headers: PANEL_HEADERS });
+          const r = await fetch(`${API}/lyrics/now?have=${encodeURIComponent(key)}${listen ? '&any=true' : ''}`, { cache: 'no-store', headers: PANEL_HEADERS });
           const j = await r.json();
           // "Só ouvir" ends when nothing plays any more or Spotify takes over
           if (!j.playing || j.media?.app === 'Spotify') { try { localStorage.removeItem('federano.listenVideo'); } catch (_) {} }
