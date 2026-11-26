@@ -35,6 +35,8 @@ test('"Só ouvir" opens the lyrics page with the video as sound only, and asks n
   await expect(page.locator('.ly-pname')).toHaveText('Lo-fi para estudar');
   await expect(page.locator('.ly-pshow')).toHaveText('Canal Calmo');
   await expect(page.locator('.ly-chip')).toHaveText('● Vídeo · tocando');
+  await page.locator('.ly-play').click();
+  await expect(page.locator('.ly-chip')).toHaveText('● Vídeo · pausado');
   await expect(page.locator('.ly-ctl2')).toBeHidden();
   expect(await page.evaluate(() => window.__asks)).toEqual(['/mirror/offer/answer?id=v1&yes=false']);
   const offers = await page.evaluate(() => window.__offers);

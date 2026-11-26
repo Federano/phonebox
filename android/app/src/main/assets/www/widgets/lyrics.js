@@ -378,7 +378,7 @@ W.lyrics = {
     const showPlay = () => {
       bPlay.innerHTML = m && m.playing ? SVG.pause : SVG.play;
       box.classList.toggle('ly-paused', !!m && !m.playing);
-      if (m) chip.textContent = `● ${podMode ? 'Podcast' : (m.app || 'PC')} · ${m.playing ? 'tocando' : 'pausado'}`;
+      if (m) chip.textContent = `● ${podMode ? (box.classList.contains('ly-video') ? 'Vídeo' : 'Podcast') : (m.app || 'PC')} · ${m.playing ? 'tocando' : 'pausado'}`;
       syncCinema();
     };
     const jumpTo = (ms) => { if (!m) return; m = { ...m, posMs: Math.max(0, Math.min(m.durMs || Infinity, ms)), ageMs: 0 }; at = performance.now(); active = -2; draw(); };
