@@ -627,7 +627,7 @@ W.lyrics = {
               tint();
               if (j.key !== key) { key = j.key; pendingKey = ''; inner.replaceChildren(); lines = []; active = -2; trBtn.hidden = true; note.textContent = ''; box.classList.remove('ly-plain', 'ly-none'); }
               draw();
-              timer = setTimeout(poll, visible() ? 4000 : 8000);
+              timer = setTimeout(poll, !visible() ? 8000 : j.kind === 'video' ? 1500 : 4000);   // a video playlist changes clips often
               return;
             }
             setPod(false);
@@ -673,6 +673,9 @@ W.lyrics = {
     let lastLive = '';
     // Tema 01 reserves space below the lyrics. Re-centre the same line when that reading area changes.
     const themeChanged = () => { active = -2; draw(); };
+    // "Só ouvir" chosen in the video pop-up: ask the PC now instead of at the next poll
+    const listenNow = () => { clearTimeout(timer); key = ''; poll(); };   // no key: asked even before the page is in view
+    window.addEventListener('federano-listen', listenNow);
     window.addEventListener('federano-theme', themeChanged);
     const ticker = setInterval(() => { syncCinema(); if (visible()) { follow2(); draw(); } }, 150);
     poll();
@@ -681,7 +684,7 @@ W.lyrics = {
       destroy() {
         alive = false; artVersion++; img.onload = null; img.onerror = null; artLayers.forEach((layer) => layer.removeAttribute('src')); syncCinema();
         clearTimeout(timer); clearInterval(ticker); cancelAnimationFrame(raf);
-        window.removeEventListener('federano-theme', themeChanged); document.removeEventListener('visibilitychange', syncCinema);
+        window.removeEventListener('federano-theme', themeChanged); window.removeEventListener('federano-listen', listenNow); document.removeEventListener('visibilitychange', syncCinema);
         if (reducedMotion.removeEventListener) reducedMotion.removeEventListener('change', syncCinema); else reducedMotion.removeListener(syncCinema);
         if (worker) worker.terminate();
       },

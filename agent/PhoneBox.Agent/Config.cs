@@ -206,7 +206,7 @@ public sealed class FederanoConfig
     /// <summary>When a video starts on the PC, ask on the tablet whether to show it there.</summary>
     public bool MirrorOffer { get; set; } = true;
     /// <summary>Seconds the "Ver no tablet?" pop-up stays without an answer.</summary>
-    public int MirrorOfferSeconds { get; set; } = 5;
+    public int MirrorOfferSeconds { get; set; } = 10;
     /// <summary>The tablet listens all the time for "Federano, ..." and runs the command (off unless turned on).</summary>
     public bool WakeWord { get; set; }
     /// <summary>Wake word: recognize on the tablet only (Android 12+ on-device recognizer), nothing sent to Google.</summary>

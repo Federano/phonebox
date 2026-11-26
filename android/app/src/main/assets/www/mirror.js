@@ -420,7 +420,7 @@ export function openMirror(title) {
 let offerEl = null;
 
 function showOffer(offer) {
-  const secs = Math.max(2, Number(offer.seconds) || 5);
+  const secs = Math.max(2, Number(offer.seconds) || 10);
   const card = document.createElement('div');
   card.className = 'offer';
   card.style.setProperty('--offer-secs', secs + 's');   // Tema 01: the red line under the card runs out with the countdown
@@ -482,6 +482,7 @@ function showOffer(offer) {
       const j = await r.json();
       if (answer === 'listen') {
         try { localStorage.setItem('federano.listenVideo', '1'); } catch (_) {}
+        window.dispatchEvent(new Event('federano-listen'));
         if (gotoSkillPage('lyrics') < 0) toast('Adicione o widget Letra numa página para ouvir assim.', 'err');
       } else if (answer && j.mirror) openMirror(offer.title);
       else if (answer && j.error) toast(j.error, 'err');
