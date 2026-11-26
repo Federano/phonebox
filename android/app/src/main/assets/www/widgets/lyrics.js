@@ -350,7 +350,7 @@ W.lyrics = {
     let lastArtistPending = false, follow = false, alive = true, key = '', pendingKey = '', lines = [], active = -2, m = null, at = 0, artId = -1, timer = 0;
     const visible = () => pages[curPage] === page && !document.body.classList.contains('night');
     function syncCinema() {
-      const enabled = cinemaReady && !podMode && m?.app === 'Spotify';
+      const enabled = cinemaReady;   // music, podcast and "Só ouvir" alike
       pic.classList.toggle('ly-cinema', enabled);
       pic.classList.toggle('ly-cinema-playing', enabled && alive && !!m?.playing && visible() && !idle() && !fullOnly && !reducedMotion.matches);
     }

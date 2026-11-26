@@ -1433,6 +1433,13 @@ export function goPage(i, instant = false) {
 }
 
 /** Federano voice: a page by id or title; "lyrics" = the first page with the lyrics widget. */
+/** Federano: the "now playing" screen (the lyrics page): Spotify with its lyrics, any other app as sound only ("Só ouvir"). */
+export function openNowPlaying() {
+  if (media?.app && media.app !== 'Spotify') { try { localStorage.setItem('federano.listenVideo', '1'); } catch (_) {} }
+  window.dispatchEvent(new Event('federano-listen'));
+  if (gotoSkillPage('lyrics') < 0) toast('Adicione o widget Letra numa página para ver o que está tocando.', 'err');
+}
+
 export function gotoSkillPage(ref) {
   if (ref === 'lyrics') {
     const n = pages.findIndex((p) => (p.widgets || []).some((w) => w.type === 'lyrics' || (w.type === 'stack' && JSON.stringify(w.options || {}).includes('"lyrics"'))));

@@ -115,9 +115,9 @@ test('podcast preserves its photo and reduced motion leaves the cinema still', a
       media: { ...window.__cinemaAnswer.media, title: 'Episódio de exemplo' } };
   }, ART_B);
   await expect(page.locator('.w.ly')).toHaveClass(/ly-podcast/);
-  await expect(picture).not.toHaveClass(/ly-cinema/);
   await expect(picture.locator('.ly-photo')).toHaveAttribute('src', ART_B);
-  await expect(picture.locator('.ly-art-layer').first()).toBeHidden();
+  await expect(picture).toHaveClass(/ly-cinema/);   // the podcast keeps the theme's photo effect (Fernando, 26/11)
+  await expect(picture.locator('.ly-art-layer').first()).toHaveAttribute('src', ART_B);
 });
 
 test('album art fallback supplies all layers and leaving the lyrics page pauses them', async ({ page }) => {

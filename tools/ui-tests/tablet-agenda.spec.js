@@ -83,3 +83,21 @@ test('a escolha inicial é solicitada uma vez e não reaparece ao reabrir o pain
   await expect(meetings).toContainText('Compromisso da conta escolhida');
   expect(await page.evaluate(() => window.__calendarCalls.filter((op) => op === 'connect').length)).toBe(0);
 });
+
+test('o botão da conta mostra a conta escolhida e troca por outra num toque', async ({ page }) => {
+  const meetings = await setup(page);
+  await page.evaluate(() => { window.__phoneboxKey = 'test-key'; });
+  const acc = meetings.locator('.mt-accbtn');
+  await expect(acc).toHaveText('pessoal ⇄');
+  await page.evaluate(() => {
+    const real = window.Android.calendarRequest;
+    window.Android.calendarRequest = (key, id, operation, payload) => {
+      if (operation === 'choose') Object.assign(window.__calendarState, { account: 'fernando.ribeiro@polibrasnet.com.br', connectionId: 'account-b' });
+      return real(key, id, operation, payload);
+    };
+  });
+  await acc.click();
+  await expect(acc).toHaveText('fernando.ribeiro ⇄');
+  expect(await page.evaluate(() => window.__calendarCalls)).toContain('choose');
+  if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/agenda-conta.png' });
+});

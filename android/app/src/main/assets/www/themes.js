@@ -1,4 +1,4 @@
-import { closeOverview, h, haptic, toast } from './main.js';
+import { closeOverview, curPage, gotoPageRef, h, haptic, homeIndex, openNowPlaying, openOverview, pages, toast } from './main.js';
 
 // ---------------------------------------------------------------- Federano: themes
 // "Temas" (overview › Temas): the panel's look, chosen on this tablet. Tema 00 is the look the panel always had; Tema 01
@@ -52,5 +52,40 @@ export function openThemes() {
   close.onclick = () => { haptic(); sheet.remove(); sheet = null; };
   document.body.append(sheet);
 }
+
+// ---------------------------------------------------------------- Tema 01: the side rail (Modelo A)
+// A column of icons on the left edge: Início, Reuniões, Música, Temas and Ajustes (all pages). Only in Tema 01.
+const ICO = {
+  home: '<path d="M4 11.5 12 5l8 6.5V20h-5v-5H9v5H4z"/>',
+  meet: '<rect x="4" y="5.5" width="16" height="14" rx="2"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/>',
+  music: '<path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/>',
+  themes: '<path d="M12 4a8 8 0 1 0 0 16c1.2 0 1.6-.8 1.6-1.6 0-1.4-1.3-1.6-1.3-2.8 0-1 .8-1.6 1.8-1.6H16a4 4 0 0 0 4-4C20 6.6 16.4 4 12 4z"/><circle cx="8" cy="11" r="1"/><circle cx="11" cy="7.8" r="1"/><circle cx="15" cy="8.6" r="1"/>',
+  more: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>',
+};
+const pageWith = (type) => pages.findIndex((p) => (p.widgets || []).some((w) => w.type === type));
+const ITEMS = [
+  ['home', 'Início', () => homeIndex(), () => gotoPageRef(pages[homeIndex()]?.id)],
+  ['meet', 'Reuniões', () => pageWith('meetings'), () => gotoPageRef(pages[pageWith('meetings')]?.id)],
+  ['music', 'Música', () => pageWith('lyrics'), () => openNowPlaying()],
+  ['themes', 'Temas', () => -1, () => openThemes()],
+  ['more', 'Ajustes', () => -1, () => openOverview()],
+];
+const rail = h('nav', 'f-rail'); rail.setAttribute('aria-label', 'Navegação');
+for (const [ico, label, , go] of ITEMS) {
+  const b = h('button', 'f-rail-i'); b.dataset.k = ico; b.setAttribute('aria-label', label);
+  b.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICO[ico]}</svg><span>${label}</span>`;
+  b.onclick = () => { haptic(); go(); };
+  rail.append(b);
+}
+document.body.append(rail);
+// shortcut: polls the current page twice a second to light its icon; an event from goPage would be exact
+setInterval(() => {
+  if (document.body.dataset.ftheme !== '01') return;
+  ITEMS.forEach(([ico, , at], i) => {
+    const b = rail.children[i], n = at();
+    b.hidden = ico === 'meet' && n < 0;
+    b.classList.toggle('on', n >= 0 && n === curPage);
+  });
+}, 500);
 
 applyTheme();

@@ -143,6 +143,13 @@ W.meetings = {
     if (!LOOKS.includes(look)) look = 'lista';
     const alt = h('div', 'mt-alt'); const lookBtn = h('button', 'mt-lookbtn'); lookBtn.setAttribute('aria-label', 'Trocar o visual');
     box.append(alt, lookBtn);
+    // the Google account this tablet reads (chosen once); a tap here picks another one
+    if (tabletCalendar.supported()) {
+      const accBtn = h('button', 'mt-lookbtn mt-accbtn'); accBtn.setAttribute('aria-label', 'Trocar a conta da agenda');
+      const showAcc = () => tabletCalendar.state().then((st) => { accBtn.textContent = (st.account ? st.account.split('@')[0] : 'Conta') + ' ⇄'; }).catch(() => { accBtn.textContent = 'Conta ⇄'; });
+      accBtn.onclick = () => { haptic(); tabletCalendar.choose().then(showAcc, () => toast('Não deu para trocar a conta agora.', 'err')); };
+      box.append(accBtn); showAcc();
+    }
     const setLook = (l) => { look = l; box.dataset.look = l; lookBtn.textContent = NAMES[l] + ' ▸'; try { localStorage.setItem('federano.meetLook', l); } catch (_) {} altKey = ''; render(); };
     lookBtn.onclick = () => { haptic(); setLook(LOOKS[(LOOKS.indexOf(look) + 1) % LOOKS.length]); };
     let altKey = '';

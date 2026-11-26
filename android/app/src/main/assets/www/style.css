@@ -1578,7 +1578,10 @@ body[data-ftheme="01"] .w { border-color: #1c1c1f; box-shadow: none; }
 body[data-ftheme="01"] .w.ly { background: #000; }
 /* Keep every lyric above the wave, including its highest point on a strong beat.
    The canvas stays full-size; only the scrolling reading area stops before this lower band. */
-body[data-ftheme="01"] .w.ly:not(.ly-podcast) .ly-words { bottom: calc(10% + 6.5cqw + 24px); overflow: hidden; }
+body[data-ftheme="01"] .w.ly:not(.ly-podcast) .ly-words { bottom: calc(7% + 4cqw); overflow: hidden; }
+/* the podcast's text scrolls but stops above the sound lines, fading out at the bottom edge */
+body[data-ftheme="01"] .w.ly.ly-podcast .ly-pod { padding-bottom: 36px; }
+body[data-ftheme="01"] .w.ly.ly-podcast .ly-words { bottom: calc(7% + 4cqw); -webkit-mask-image: linear-gradient(#000 88%, transparent); mask-image: linear-gradient(#000 88%, transparent); }
 body[data-ftheme="01"] .ly-bgphoto, body[data-ftheme="01"] .ly-bgveil, body[data-ftheme="01"] .ly-vig { display: none; }
 body[data-ftheme="01"] .ly-card { background: #000; border-left: 1px solid #1c1c1f; }
 body[data-ftheme="01"] .ly-chip { color: #6a6a70; font-weight: 500; letter-spacing: .14em; }
@@ -1826,3 +1829,24 @@ body[data-ftheme="01"] .offer-count { font-weight: 400; }
 
 /* Federano "Só ouvir": a video's sound on the podcast screen; Spotify's own buttons do not apply to it */
 .w.ly.ly-video .ly-ctl2, .w.ly.ly-video .ly-talk { display: none !important; }
+
+/* Fernando's adjustments (26/11): the podcast's text scrolls with a finger; the picture has no light frame and no red wipe */
+.w.ly.ly-podcast .ly-words { overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; }
+.w.ly.ly-podcast .ly-pdesc { max-height: none; -webkit-mask-image: none; mask-image: none; }
+body[data-ftheme="01"] .ly-pic { background: transparent; }
+body[data-ftheme="01"] .ly-pic::after { display: none; }
+.mt-accbtn { top: 46px; text-transform: none; }
+
+/* Tema 01 (Modelo A): the side rail of icons on the left edge; the pages move right to make room */
+.f-rail { display: none; }
+body[data-ftheme="01"] { --pad-l: max(96px, calc(env(safe-area-inset-left) + 82px)); }
+body[data-ftheme="01"] .f-rail { position: fixed; z-index: 11; left: 0; top: 0; bottom: 0; width: 82px; display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: max(18px, env(safe-area-inset-top)) 0 18px; border-right: 1px solid #1c1c1f; background: #000; }
+body[data-ftheme="01"] .f-rail-i { width: 66px; height: 62px; border: 0; border-left: 2px solid transparent; border-radius: 3px; background: transparent; color: #55555b;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; font-size: 10.5px; transition: color .25s, border-color .25s; }
+body[data-ftheme="01"] .f-rail-i[hidden] { display: none; }
+body[data-ftheme="01"] .f-rail-i svg { width: 22px; height: 22px; }
+body[data-ftheme="01"] .f-rail-i.on { color: #ff2a4f; border-left-color: #ff2a4f; }
+body[data-ftheme="01"] .f-rail-i:active { transform: scale(.94); }
+body[data-ftheme="01"] .f-rail-i[data-k="more"] { margin-top: auto; }
+body.night .f-rail { display: none !important; }
