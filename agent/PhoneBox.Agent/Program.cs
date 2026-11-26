@@ -966,13 +966,32 @@ app.MapGet("/api/mirror/frame", async (long? after, HttpResponse res, MirrorCapt
 
 // Federano "Letra" page: what is playing, the artist's photo (Spotify) and the timed lyrics (LRCLIB). The lyrics are left
 // out when the panel already has them ("have" = the song's key).
-app.MapGet("/api/lyrics/now", async (string? have, bool? any, MediaMonitor media, LyricsService lyrics, SpotifyControl spotify, CancellationToken ct) =>
+app.MapGet("/api/lyrics/now", async (string? have, bool? any, MediaMonitor media, LyricsService lyrics, SpotifyControl spotify, YouTubeTracker yt, CancellationToken ct) =>
 {
     var m = media.Snapshot();
     // Federano "Só ouvir" (the video pop-up's third answer): a video on the PC shown as sound only, like a podcast
     if (any == true && m is { Title.Length: > 0 } && m.App != "Spotify")
-        return Results.Json(new { playing = true, key = $"video|{m.App}|{m.Title}", kind = "video", media = m,
-            lyrics = new { lines = Array.Empty<object>(), plain = "", instrumental = false, found = false }, pending = false, posOffsetMs = 0 });
+    {
+        var vkey = $"video|{m.App}|{m.Title}";
+        // the song's lyrics, found from the video's title; the YouTube picture in high quality when it is a YouTube video
+        var (song, singer) = LyricsService.FromVideo(m.Title, m.Artist);
+        object? vwords = null;
+        var vpending = false;
+        if (have != vkey && song.Length > 0)
+        {
+            var task = lyrics.GetAsync(song, singer, "", 0);   // a clip's length is not the song's: no length to match
+            if (task.IsCompleted || await Task.WhenAny(task, Task.Delay(400, ct)) == task)
+            {
+                var r = await task;
+                vwords = new { lines = r.Lines.Select(l => new { t = l.T, text = l.Text }), plain = r.Plain, instrumental = r.Instrumental, found = r.Found, trans = r.Trans, lang = r.Lang };
+            }
+            else vpending = true;
+        }
+        var image = yt.Current() is { } v && !string.IsNullOrEmpty(v.Title) && (m.Title.Contains(v.Title, StringComparison.OrdinalIgnoreCase) || v.Title.Contains(m.Title, StringComparison.OrdinalIgnoreCase))
+            ? $"https://i.ytimg.com/vi/{v.VideoId}/maxresdefault.jpg" : null;
+        return Results.Json(new { playing = true, key = vkey, kind = "video", media = m, image, song, singer,
+            lyrics = vwords, pending = vpending, posOffsetMs = 0 });
+    }
     // only Spotify: a video in the browser or another player leaves this page alone
     if (m is null || m.Title.Length == 0 || m.App != "Spotify") return Results.Json(new { playing = false, other = m?.App });
     var key = LyricsService.KeyOf(m.Title, m.Artist);

@@ -519,5 +519,13 @@ async function pollOffer() {
 }
 setTimeout(pollOffer, 3000);
 
+/** Federano: show the PC's playing video on the tablet now (the "Ver vídeo" button of "Só ouvir"). */
+export async function mirrorNow(title) {
+  try {
+    const j = await fetch(`${API}/mirror/start`, { method: 'POST', cache: 'no-store', headers: PANEL_HEADERS }).then((r) => r.json());
+    if (j.ok) openMirror(j.title || title); else toast(j.error || 'Não deu para mostrar o vídeo agora.', 'err');
+  } catch (_) { toast('Sem conexão com o PC.', 'err'); }
+}
+
 export function closeMirror() { if (overlay) overlay.stop(); }
 export const mirrorOpen = () => !!overlay;

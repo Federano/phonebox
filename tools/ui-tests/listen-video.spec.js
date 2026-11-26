@@ -83,3 +83,44 @@ test('the podcast and "Só ouvir" text scrolls up and down without holding sidew
   const css = await page.locator('.w.ly .ly-words').evaluate((n) => { const s = getComputedStyle(n); return [s.overflowX, s.overflowY, s.overscrollBehaviorX, s.overscrollBehaviorY, s.touchAction].join(' '); });
   expect(css).toBe('hidden auto auto contain auto');
 });
+
+test('"Só ouvir" shows the song\'s lyrics like Spotify, the YouTube picture, and switches to details or to the video', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto('/panel/');
+  await page.evaluate(() => {
+    localStorage.clear(); localStorage.setItem('federano.listenVideo', '1');
+    localStorage.setItem('pb-demo-config', JSON.stringify({ night: { enabled: false }, shortcuts: [], pages: [{ id: 'letra', title: 'Letra', enabled: true, widgets: [{ id: 'ly', type: 'lyrics', x: 0, y: 0, w: 12, h: 6, options: {} }] }] }));
+  });
+  await page.reload();
+  await page.evaluate(() => {
+    window.__posts = [];
+    const pic = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720"><rect width="1280" height="720" fill="#336"/></svg>');
+    const real = window.fetch;
+    window.fetch = (url, init) => {
+      const u = String(url);
+      const json = (d) => Promise.resolve(new Response(JSON.stringify(d), { headers: { 'Content-Type': 'application/json' } }));
+      if (u.includes('/mirror/start')) { window.__posts.push('start'); return json({ ok: false, error: 'teste' }); }
+      if (u.includes('/lyrics/now')) return json({ playing: true, key: 'video|Chrome|Rashid - Se o Mundo Acabar', kind: 'video', image: pic, song: 'Se o Mundo Acabar', singer: 'Rashid',
+        media: { app: 'Chrome', title: 'Rashid - Se o Mundo Acabar', artist: 'Rashid', album: '', playing: true, posMs: 5000, durMs: 200000, artId: 0, canSeek: true, ageMs: 0 },
+        lyrics: u.includes('have=video') ? null : { found: true, instrumental: false, plain: '', lines: [{ t: 0, text: 'Primeira linha' }, { t: 4000, text: 'Segunda linha' }, { t: 60000, text: 'Depois' }] },
+        pending: false, posOffsetMs: 0 });
+      return real(url, init);
+    };
+  });
+  const ly = page.locator('.w.ly');
+  await expect(ly.locator('.ly-line', { hasText: 'Segunda linha' })).toHaveCount(1, { timeout: 12000 });
+  await expect(ly).toHaveClass(/ly-video/);
+  await expect(ly).not.toHaveClass(/ly-podcast/);
+  await expect(ly.locator('.ly-photo')).toHaveAttribute('src', /^data:image\/svg/);
+  await ly.getByRole('button', { name: 'Detalhes' }).click();
+  await expect(ly).toHaveClass(/ly-podcast/);
+  await expect(ly.locator('.ly-pname')).toHaveText('Rashid - Se o Mundo Acabar');
+  await ly.getByRole('button', { name: 'Letra', exact: true }).click();
+  await expect(ly).not.toHaveClass(/ly-podcast/);
+  await expect(ly.locator('.ly-line', { hasText: 'Primeira linha' })).toHaveCount(1);
+  await ly.getByRole('button', { name: 'Ver vídeo' }).click();
+  await expect.poll(() => page.evaluate(() => window.__posts)).toEqual(['start']);
+  await expect(page.locator('#toast')).toContainText('teste');
+  expect(errors).toEqual([]);
+});

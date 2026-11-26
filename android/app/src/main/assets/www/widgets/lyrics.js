@@ -1,5 +1,6 @@
 import { API, D, PANEL_HEADERS, api, averageColor, curPage, h, haptic, idle, media as liveMedia, pages, streaming, toast } from '../main.js';
 import { W } from '../registry.js';
+import { mirrorNow } from '../mirror.js';
 
 // ---------------------------------------------------------------- Federano "Letra"
 // The song playing on the PC: the lyrics take most of the screen, centred, with the line being sung lit up and kept in
@@ -183,6 +184,16 @@ W.lyrics = {
     let artVersion = 0, cinemaReady = false, artTrack = '';
     const chip = h('div', 'ly-chip', '');
     const trBtn = h('button', 'ly-tr', h('i'), 'Tradução'); trBtn.hidden = true;
+    // "Só ouvir" (a video on the PC): see the video itself on the tablet, or switch between its lyrics and its details
+    const vidBtn = h('button', 'ly-vbtn', 'Ver vídeo'), lyrBtn = h('button', 'ly-vbtn', 'Letra');
+    let vidView = 'lyrics', vidKey = '', vidWords = null;
+    try { vidView = localStorage.getItem('federano.videoView') || 'lyrics'; } catch (_) {}
+    vidBtn.onclick = () => { haptic(); mirrorNow(m?.title); };
+    lyrBtn.onclick = () => {
+      haptic(); vidView = vidView === 'lyrics' ? 'info' : 'lyrics';
+      try { localStorage.setItem('federano.videoView', vidView); } catch (_) {}
+      clearTimeout(timer); key = ''; poll();
+    };
     // discreet full-screen switch: only the lyrics, centred, bigger (the card with the photo and controls goes away)
     const FS_ON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>';
     const FS_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h5V3M21 8h-5V3M3 16h5v5M21 16h-5v5"/></svg>';
@@ -313,7 +324,7 @@ W.lyrics = {
     }
     if (!reducedMotion.matches) raf = requestAnimationFrame(animate);
     box.append(
-      h('div', 'ly-main', bgPhoto, h('div', 'ly-bgveil'), fx, vig, h('div', 'ly-top', h('div', 'ly-chipw', chip, h('span', 'ly-talk', h('b'), h('b'), h('b'))), h('div', 'ly-topr', trBtn, fsBtn)), h('div', 'ly-words', list, note, pod)),
+      h('div', 'ly-main', bgPhoto, h('div', 'ly-bgveil'), fx, vig, h('div', 'ly-top', h('div', 'ly-chipw', chip, h('span', 'ly-talk', h('b'), h('b'), h('b'))), h('div', 'ly-topr', vidBtn, lyrBtn, trBtn, fsBtn)), h('div', 'ly-words', list, note, pod)),
       h('div', 'ly-card', pic, h('div', 'ly-meta', title, artist), h('div', 'ly-prog', bar, times), ctl, ctl2, qHead, queue, sheet));
     // the next songs; tapping one plays it (Spotify connected in the settings)
     let qKey = '', lastQueue = [];
@@ -615,7 +626,17 @@ W.lyrics = {
             chip.textContent = `● ${m.app || 'PC'} · ${m.playing ? 'tocando' : 'pausado'}`;
             total.textContent = m.durMs > 0 ? clock(m.durMs) : '';
             showPlay();
-            if (j.kind === 'video') j.episode = { name: m.title, show: m.artist || m.app || 'Vídeo', publisher: 'Só o som · vídeo no PC', description: '', date: '', image: null, durationMs: m.durMs };
+            if (j.kind === 'video') {
+              if (j.key !== vidKey) { vidKey = j.key; vidWords = null; }
+              if (j.lyrics) vidWords = j.lyrics;
+              const has = !!(vidWords?.found && !vidWords.instrumental && (vidWords.lines?.length || vidWords.plain));
+              lyrBtn.textContent = has ? (vidView === 'lyrics' ? 'Detalhes' : 'Letra') : (j.pending ? 'Letra…' : 'Sem letra');
+              lyrBtn.disabled = !has;
+              if (has && vidView === 'lyrics') {
+                // the song's lyrics, shown like Spotify's; the picture is the video's own (YouTube, in high quality)
+                j.lyrics = vidWords; j.pending = false; j.artistImage = j.image || null; j.artistPending = false;
+              } else j.episode = { name: m.title, show: m.artist || m.app || 'Vídeo', publisher: 'Só o som · vídeo no PC', description: '', date: '', image: j.image || null, durationMs: m.durMs };
+            }
             if ((j.kind === 'episode' || j.kind === 'video') && j.episode) {
               const ep = j.episode;
               setPod(true);
@@ -628,7 +649,8 @@ W.lyrics = {
               lastQueue = []; fillQueue([]);
               setArt(ep.image || (m.artId ? `${API}/art?v=${m.artId}` : ''), false);
               tint();
-              if (j.key !== key) { key = j.key; pendingKey = ''; inner.replaceChildren(); lines = []; active = -2; trBtn.hidden = true; note.textContent = ''; box.classList.remove('ly-plain', 'ly-none'); }
+              // a video whose lyrics are still on their way keeps asking for them (no key yet)
+              if (j.key !== key && !(j.kind === 'video' && j.pending)) { key = j.key; pendingKey = ''; inner.replaceChildren(); lines = []; active = -2; trBtn.hidden = true; note.textContent = ''; box.classList.remove('ly-plain', 'ly-none'); }
               draw();
               timer = setTimeout(poll, !visible() ? 8000 : j.kind === 'video' ? 1500 : 4000);   // a video playlist changes clips often
               return;

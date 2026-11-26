@@ -49,6 +49,18 @@ public sealed partial class LyricsService(ILogger<LyricsService> log)
     }
     private string _offKey = "";
 
+    /// <summary>Federano "Só ouvir": the song and artist inside a music video's title ("Artist - Song (Clipe Oficial)").</summary>
+    public static (string Song, string Artist) FromVideo(string title, string channel)
+    {
+        var t = Regex.Replace(title, @"\s*[\(\[][^\)\]]*[\)\]]", "").Trim();
+        string song = t, artist = channel;
+        var dash = Regex.Match(t, @"\s[-–—|]\s");
+        if (dash.Success) { artist = t[..dash.Index]; song = t[(dash.Index + dash.Length)..]; }
+        static string Main(string s) => Regex.Split(s, @"\s+(?:ft\.?|feat\.?|part\.?|x|&)\s+|,\s*", RegexOptions.IgnoreCase)[0].Trim(' ', '"', '\'', '“', '”');
+        artist = Regex.Replace(artist, @"\s*-\s*Topic$|VEVO$|\s+Oficial$|\s+Official$", "", RegexOptions.IgnoreCase);
+        return (Main(song), Main(artist));
+    }
+
     public static string KeyOf(string title, string artist) => (title.Trim() + "\u0001" + artist.Trim()).ToLowerInvariant();
 
     public Task<Result> GetAsync(string title, string artist, string album, long durationMs)

@@ -1861,3 +1861,8 @@ body[data-ftheme="01"] .f-rail { transition: transform .3s cubic-bezier(.16, 1, 
 body[data-ftheme="01"].f-rail-off { --pad-l: max(14px, env(safe-area-inset-left)); }
 body[data-ftheme="01"].f-rail-off .f-rail { transform: translateX(-100%); }
 body[data-ftheme="01"].f-rail-off .f-rail-tog { left: 0; }
+
+/* "Só ouvir": the Ver vídeo and Letra buttons show only for a video */
+.w.ly .ly-vbtn { display: none; }
+.w.ly.ly-video .ly-vbtn { display: inline-flex; align-items: center; font-size: clamp(11px, 2.6cqmin, 14px); font-weight: 700; padding: 6px 12px; border-radius: 999px; background: rgba(255, 255, 255, .14); color: #fff; }
+.w.ly .ly-vbtn:disabled { opacity: .45; }
