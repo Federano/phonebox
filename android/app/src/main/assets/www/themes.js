@@ -78,6 +78,19 @@ for (const [ico, label, , go] of ITEMS) {
   rail.append(b);
 }
 document.body.append(rail);
+// a small tab on the rail's edge hides it (the pages take the whole width) and brings it back; kept on this tablet
+const railTog = h('button', 'f-rail-tog');
+const showRail = (hidden) => {
+  document.body.classList.toggle('f-rail-off', hidden);
+  railTog.setAttribute('aria-label', hidden ? 'Mostrar a barra lateral' : 'Esconder a barra lateral');
+  railTog.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="${hidden ? 'M10 7l5 5-5 5' : 'M14 7l-5 5 5 5'}"/></svg>`;
+  try { localStorage.setItem('federano.railHidden', hidden ? '1' : '0'); } catch (_) {}
+};
+let railHidden = false;
+try { railHidden = localStorage.getItem('federano.railHidden') === '1'; } catch (_) {}
+showRail(railHidden);
+railTog.onclick = () => { haptic(); showRail(!document.body.classList.contains('f-rail-off')); };
+document.body.append(railTog);
 // shortcut: polls the current page twice a second to light its icon; an event from goPage would be exact
 setInterval(() => {
   if (document.body.dataset.ftheme !== '01') return;

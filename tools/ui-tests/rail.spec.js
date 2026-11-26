@@ -33,7 +33,19 @@ test('the rail shows only in Tema 01 and goes to each page', async ({ page }) =>
   await rail.getByRole('button', { name: 'Ajustes' }).click();
   await expect(page.locator('#overview')).toBeVisible();
   if (process.env.SHOTS) { await page.evaluate(async () => (await import('/panel/main.js')).closeOverview()); await rail.getByRole('button', { name: 'Reuniões' }).click(); await page.waitForTimeout(1200); await page.screenshot({ path: process.env.SHOTS + '/rail-reunioes.png' }); }
-  await page.evaluate(async () => { (await import('/panel/main.js')).closeOverview(); (await import('/panel/themes.js')).setTheme('00'); });
+  await page.evaluate(async () => (await import('/panel/main.js')).closeOverview());
+  // the small tab hides the rail (the pages take the whole width), stays hidden after a reload, and brings it back
+  const tog = page.locator('.f-rail-tog');
+  await tog.click();
+  await expect(rail).not.toBeInViewport();
+  if (process.env.SHOTS) { await page.waitForTimeout(500); await page.screenshot({ path: process.env.SHOTS + '/rail-escondida.png' }); }
+  await page.reload();
+  await expect(page.locator('.f-rail-tog')).toHaveAttribute('aria-label', 'Mostrar a barra lateral');
+  await expect(rail).not.toBeInViewport();
+  await page.locator('.f-rail-tog').click();
+  await expect(rail).toBeInViewport();
+  await page.evaluate(async () => (await import('/panel/themes.js')).setTheme('00'));
+  await expect(page.locator('.f-rail-tog')).toBeHidden();
   await expect(rail).toBeHidden();
   expect(errors).toEqual([]);
 });
