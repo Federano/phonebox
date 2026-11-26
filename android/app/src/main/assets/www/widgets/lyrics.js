@@ -1,5 +1,6 @@
 import { API, D, PANEL_HEADERS, api, averageColor, curPage, h, haptic, media as liveMedia, pages, streaming, toast } from '../main.js';
 import { W } from '../registry.js';
+import { isLightMode } from '../light-mode.js';
 
 // ---------------------------------------------------------------- Federano "Letra"
 // The song playing on the PC: the lyrics take most of the screen, centred, with the line being sung lit up and kept in
@@ -91,13 +92,25 @@ function minimalBg(g, W, H, st) {
 function fxWorker() {
   let cv = null, g = null, cols = ['150,120,220', '120,90,200', '200,120,180', '90,140,220'];
   const st = { bass: .3, mid: .3, high: .3, avgBass: .3, pulse: 0, lastBeat: 0, act: 1, ph: 0, lastMs: 0, now: 0, waveAt: -1e9, voice: 0 };
-  const inp = { nb: .3, nm: .3, nh: .3, bands: false, playing: false, pod: false, vis: true, theme: '00' };
+  const inp = { nb: .3, nm: .3, nh: .3, bands: false, playing: false, pod: false, vis: true, theme: '00', light: false };
   const raf = self.requestAnimationFrame ? (f) => self.requestAnimationFrame(f) : (f) => setTimeout(() => f(performance.now()), 16);
-  let frames = 0;
+  let frames = 0, queued = false;
+  function schedule() {
+    if (queued || !cv || !inp.vis) return;
+    queued = true; raf(loop);
+  }
   function loop() {
-    raf(loop);
+    queued = false;
     const ms = performance.now();   // the worker's own clock (the frame time it is given can come from another one)
     if (!inp.vis || !cv.width) return;
+    if (inp.light) {
+      const still = { bass: .15, mid: .15, high: .15, pulse: 0, act: .12, ph: 0, now: 0, waveAt: -1e9, voice: 0, pod: inp.pod };
+      if (inp.theme === '01') minimalBg(g, cv.width, cv.height, still);
+      else if (inp.pod) voiceWave(g, cv.width, cv.height, still, cols);
+      else weave(g, cv.width, cv.height, still, cols);
+      self.postMessage({ frames: ++frames });
+      return; // A single still frame; only a new message wakes this worker again.
+    }
     if (++frames % 30 === 0) self.postMessage({ frames });   // a heartbeat for the page (and the tests)
     st.bass += (inp.nb - st.bass) * .18; st.mid += (inp.nm - st.mid) * .15; st.high += (inp.nh - st.high) * .15;
     st.avgBass += (inp.nb - st.avgBass) * .03;
@@ -112,14 +125,16 @@ function fxWorker() {
     if (inp.theme === '01') minimalBg(g, cv.width, cv.height, st);
     else if (inp.pod) voiceWave(g, cv.width, cv.height, st, cols);
     else weave(g, cv.width, cv.height, st, cols);
+    schedule();
   }
   self.onmessage = (e) => {
     const d = e.data;
-    if (d.canvas) { cv = d.canvas; g = cv.getContext('2d'); raf(loop); }
+    if (d.canvas) { cv = d.canvas; g = cv.getContext('2d'); }
     if (d.size && cv && (cv.width !== d.size[0] || cv.height !== d.size[1])) { cv.width = d.size[0]; cv.height = d.size[1]; }
     if (d.inp) Object.assign(inp, d.inp);
     if (d.cols) cols = d.cols;
     if (d.wave) st.waveAt = performance.now();
+    schedule();
   };
 }
 
@@ -182,7 +197,7 @@ W.lyrics = {
       fsBtn.title = fsBtn.getAttribute('aria-label');
     };
     applyFs();
-    fsBtn.onclick = () => { haptic(); fullOnly = !fullOnly; applyFs(); try { localStorage.setItem('federano.lyricsFull', fullOnly ? '1' : '0'); } catch (_) {} active = -2; };
+    fsBtn.onclick = () => { haptic(); fullOnly = !fullOnly; applyFs(); try { localStorage.setItem('federano.lyricsFull', fullOnly ? '1' : '0'); } catch (_) {} staticDirty = true; active = -2; };
     const title = h('div', 'ly-title', '');
     const artist = h('div', 'ly-artist', '');
     const fill = h('i');
@@ -231,20 +246,42 @@ W.lyrics = {
     const vig = h('div', 'ly-vig');
     const fxs = { bass: .3, mid: .3, high: .3, avgBass: .3, pulse: 0, lastBeat: 0, act: 1, ph: 0, lastMs: 0, now: 0, waveAt: -1e9, voice: 0 };
     let cols = ['150,120,220', '120,90,200', '200,120,180', '90,140,220'], lastWant = 0, raf = 0, lastFrame = 0;
+    const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+    let staticDirty = true, fallbackFrames = 0;
     let worker = null, sent = '';
-    if (fx.transferControlToOffscreen && typeof Worker === 'function' && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (fx.transferControlToOffscreen && typeof Worker === 'function' && !reducedMotion.matches) {
       try {
         const url = URL.createObjectURL(new Blob([`${weave}\n${voiceWave}\n${minimalBg}\n(${fxWorker})();`], { type: 'text/javascript' }));
-        worker = new Worker(url);
+        worker = new Worker(url); URL.revokeObjectURL(url);
         worker.onmessage = (e) => { box.dataset.fxFrames = e.data.frames; };
         const off = fx.transferControlToOffscreen();
-        worker.postMessage({ canvas: off, cols }, [off]);
+        worker.postMessage({ canvas: off, cols, inp: { vis: false, light: isLightMode() } }, [off]);
       } catch (_) { worker = null; }
     }
-    const wave = () => { if (worker) worker.postMessage({ wave: 1 }); else fxs.waveAt = performance.now(); };
+    const wave = () => { if (isLightMode()) return; if (worker) worker.postMessage({ wave: 1 }); else fxs.waveAt = performance.now(); };
+    function renderStill() {
+      const w = Math.round(fx.clientWidth * .5), height = Math.round(fx.clientHeight * .5);
+      if (!w || !height) return;
+      const theme = document.body.dataset.ftheme || '00';
+      if (worker) {
+        worker.postMessage({ size: [w, height], cols, inp: { light: true, vis: true, theme, pod: podMode } });
+        sent = 'light';
+      } else {
+        if (fx.width !== w || fx.height !== height) { fx.width = w; fx.height = height; }
+        const still = { bass: .15, mid: .15, high: .15, pulse: 0, act: .12, ph: 0, now: 0, waveAt: -1e9, voice: 0, pod: podMode };
+        if (theme === '01') minimalBg(fx.getContext('2d'), w, height, still);
+        else if (podMode) voiceWave(fx.getContext('2d'), w, height, still, cols);
+        else weave(fx.getContext('2d'), w, height, still, cols);
+        box.dataset.fxFrames = String(++fallbackFrames);
+      }
+      staticDirty = false;
+    }
     function animate(ms) {
       raf = requestAnimationFrame(animate);
       if (!visible()) { if (worker && sent !== 'off') { sent = 'off'; worker.postMessage({ inp: { vis: false } }); } return; }
+      // Keep the lyric clock precise while skipping audio analysis, canvas animation and spectrum keep-alives.
+      lineCheck();
+      if (isLightMode()) { if (staticDirty) renderStill(); return; }
       if (ms - lastFrame < 15) return;   // the tablet is always plugged in: up to 60 fps
       lastFrame = ms;
       const w = Math.round(fx.clientWidth), hgt = Math.round(fx.clientHeight);
@@ -259,7 +296,6 @@ W.lyrics = {
       const part = (a, b) => bands ? Math.min(1, bands.slice(a, b).reduce((x, v) => x + v, 0) / (b - a) / 60) : .3;
       const nb = part(0, 10), nm = part(10, 30), nh = part(30, 48);
       // the line being sung is checked every frame (not 7 times a second): it lights up right on time
-      lineCheck();
       if (document.body.dataset.ftheme === '01') {
         if (playing && bands && nb > fxs.avgBass * 1.35 + .08 && ms - fxs.lastBeat > 280) { fxs.pulse = 1; fxs.lastBeat = ms; }
         fxs.pulse *= .88; fxs.avgBass += (nb - fxs.avgBass) * .03;
@@ -269,7 +305,7 @@ W.lyrics = {
       }
       if (worker) {
         const theme = document.body.dataset.ftheme || '00';
-        const msg = { nb, nm, nh, bands: !!bands, playing, pod: podMode, vis: true, theme };
+        const msg = { nb, nm, nh, bands: !!bands, playing, pod: podMode, vis: true, theme, light: false };
         const key2 = `${nb.toFixed(3)}|${nm.toFixed(3)}|${nh.toFixed(3)}|${playing}|${podMode}|${theme}|${cw}x${ch}`;
         if (key2 !== sent) { sent = key2; worker.postMessage({ inp: msg, size: [cw, ch] }); }
       } else {
@@ -286,6 +322,7 @@ W.lyrics = {
       if (document.body.dataset.ftheme === '01') minimalBg(fx.getContext('2d'), cw, ch, fxs);
       else if (podMode) voiceWave(fx.getContext('2d'), cw, ch, fxs, cols);
       else weave(fx.getContext('2d'), cw, ch, fxs, cols);
+      if (++fallbackFrames % 30 === 0) box.dataset.fxFrames = String(fallbackFrames);
       }
       // the vignette's breathing and the photo's slow zoom are CSS animations: the GPU runs them on its own
       // keep the agent's analyser running while this page shows (it stops a few seconds after the last ask)
@@ -294,7 +331,7 @@ W.lyrics = {
         api('/spectrum', 'GET', 1500).then((r) => { if (!streaming() && r && r.b) { D.spectrum = r.b; D.spectrumAt = Date.now(); } }).catch(() => {});
       }
     }
-    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) raf = requestAnimationFrame(animate);
+    if (!reducedMotion.matches) raf = requestAnimationFrame(animate);
     box.append(
       h('div', 'ly-main', bgPhoto, h('div', 'ly-bgveil'), fx, vig, h('div', 'ly-top', h('div', 'ly-chipw', chip, h('span', 'ly-talk', h('b'), h('b'), h('b'))), h('div', 'ly-topr', trBtn, fsBtn)), h('div', 'ly-words', list, note, pod)),
       h('div', 'ly-card', h('div', 'ly-pic', img), h('div', 'ly-meta', title, artist), h('div', 'ly-prog', bar, times), ctl, ctl2, qHead, queue, sheet));
@@ -431,6 +468,7 @@ W.lyrics = {
     bLists.onclick = openLists;
     plClose.onclick = () => { haptic(); sheet.hidden = true; };
     const setPod = (on) => {
+      if (podMode !== on) staticDirty = true;
       podMode = on; box.classList.toggle('ly-podcast', on); pod.hidden = !on;
       setSkips(on ? 15000 : 10000, on ? 30000 : 10000);
       bPrev.setAttribute('aria-label', on ? 'Episódio anterior' : 'Música anterior'); bNext.setAttribute('aria-label', on ? 'Próximo episódio' : 'Próxima música');
@@ -445,6 +483,7 @@ W.lyrics = {
       const from = list.scrollTop;
       if (Math.abs(top - from) < 2) return;
       list.scrollTop = top;
+      if (isLightMode()) { inner.style.transition = 'none'; inner.style.transform = ''; return; }
       const d = list.scrollTop - from;
       inner.style.transition = 'none';
       inner.style.transform = `translate3d(0,${d.toFixed(1)}px,0)`;
@@ -619,11 +658,17 @@ W.lyrics = {
     }
     const pollNow = { pending: false };
     let lastLive = '';
+    // Tema 01 reserves space below the lyrics. Re-centre the same line when that reading area changes.
+    const themeChanged = () => { active = -2; draw(); };
+    window.addEventListener('federano-theme', themeChanged);
+    // every switch of Modo leve draws one still frame again (on) or restarts the animation (off)
+    const lightChanged = () => { staticDirty = true; sent = ''; };
+    window.addEventListener('federano-light-mode', lightChanged);
     const ticker = setInterval(() => { if (visible()) { follow2(); draw(); } }, 150);
     poll();
     return {
       update() {},
-      destroy() { alive = false; clearTimeout(timer); clearInterval(ticker); cancelAnimationFrame(raf); if (worker) worker.terminate(); },
+      destroy() { alive = false; clearTimeout(timer); clearInterval(ticker); cancelAnimationFrame(raf); window.removeEventListener('federano-theme', themeChanged); window.removeEventListener('federano-light-mode', lightChanged); if (worker) worker.terminate(); },
     };
   },
 };

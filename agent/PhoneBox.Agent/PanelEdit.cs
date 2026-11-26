@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace PhoneBox.Agent;
 
@@ -13,7 +15,21 @@ namespace PhoneBox.Agent;
 public static partial class PanelEdit
 {
     public sealed record WidgetEdit(string? Id, string Type, int X, int Y, int W, int H, Dictionary<string, JsonElement>? Options);
-    public sealed record PageEdit(List<WidgetEdit> Widgets);
+    public sealed record PageEdit(List<WidgetEdit> Widgets, string? BaseRevision = null, string? EditId = null, string? PcId = null);
+
+    public const string Conflict = "Esta página também mudou no PC. A edição do tablet foi preservada; abra o editor para escolher qual usar.";
+    private static readonly JsonSerializerOptions PublicJson = new(JsonSerializerDefaults.Web);
+
+    // A stable scope, not an authentication key: drafts from one computer must never be sent to another.
+    public static string ComputerId(string configPath) => Hash(Environment.MachineName + "\0" + System.IO.Path.GetFullPath(configPath));
+    private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
+
+    public static string Revision(PageConfig page) => Hash(JsonSerializer.Serialize((page.Widgets ?? []).Select(w => new
+    {
+        w.Id, w.Type, w.X, w.Y, w.W, w.H, w.Appearance, options = StackWidgets.PublicOptions(w),
+    }), PublicJson));
+
+    private static string Revision(JsonNode page) => Revision(page.Deserialize<PageConfig>(PublicJson)!);
 
     private sealed record OptDef(string Key, string Type, JsonElement? Choices, double? Min, double? Max);
     private sealed record WidgetDef(string Type, List<OptDef> Options);
@@ -64,15 +80,22 @@ public static partial class PanelEdit
         var pages = Prop(root, "pages") as JsonArray;
         var page = pages?.FirstOrDefault(p => string.Equals(Prop(p!, "id")?.GetValue<string>(), pageId, StringComparison.Ordinal));
         if (page is null) return (null, "Página não encontrada");
+        if (edit.EditId is not null && !Guid.TryParse(edit.EditId, out _)) return (null, "Identificador de edição inválido");
+        // An acknowledgement can be lost after the write. Retrying that exact edit must not add widgets twice
+        // or undo a later desktop change to the same page.
+        if (edit.EditId is not null && Prop(page, "tabletEditId")?.GetValue<string>() == edit.EditId) return (settingsJson, null);
+        if (edit.BaseRevision is not null && Revision(page) != edit.BaseRevision) return (null, Conflict);
         if (edit.Widgets is null || edit.Widgets.Count > 48) return (null, "Widgets demais nesta página");
         var old = (Prop(page, "widgets") as JsonArray ?? []).Where(w => w is not null)
             .ToDictionary(w => Prop(w!, "id")?.GetValue<string>() ?? "", w => w!, StringComparer.Ordinal);
 
         var result = new JsonArray();
         var taken = new bool[Catalog.Cols, Catalog.Rows];
+        var ids = new HashSet<string>(StringComparer.Ordinal);
         foreach (var e in edit.Widgets)
         {
             if (e is null || string.IsNullOrEmpty(e.Type) || !Catalog.IsWidget(e.Type)) return (null, $"Tipo de widget desconhecido: {e?.Type}");
+            if (e.Id is { Length: > 0 } provided && !ids.Add(provided)) return (null, "Identificador de widget repetido");
             var (minW, minH) = Catalog.MinSize(e.Type);
             if (e.W < minW || e.H < minH || e.X < 0 || e.Y < 0 || e.X + e.W > Catalog.Cols || e.Y + e.H > Catalog.Rows)
                 return (null, $"Posição ou tamanho fora da página ({e.Type})");
@@ -92,7 +115,9 @@ public static partial class PanelEdit
             else
             {
                 if (PcOnly(e.Type)) return (null, "Este widget só pode ser adicionado pelo PC");
-                node = new JsonObject { ["id"] = "t" + Guid.NewGuid().ToString("N")[..10], ["type"] = e.Type };
+                var newId = e.Id is { Length: 33 } proposed && proposed[0] == 't' && Guid.TryParseExact(proposed[1..], "N", out _)
+                    ? proposed : "t" + Guid.NewGuid().ToString("N")[..10];
+                node = new JsonObject { ["id"] = newId, ["type"] = e.Type };
             }
             Set(node, "x", e.X); Set(node, "y", e.Y); Set(node, "w", e.W); Set(node, "h", e.H);
 
@@ -112,6 +137,11 @@ public static partial class PanelEdit
             result.Add(node);
         }
         SetProp(page, "widgets", result);
+        if (edit.EditId is not null)
+        {
+            SetProp(page, "tabletEditId", JsonValue.Create(edit.EditId)!);
+            SetProp(page, "tabletEditRevision", JsonValue.Create(Revision(page))!);
+        }
         return (root.ToJsonString(new JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }), null);
     }
 

@@ -1,4 +1,5 @@
 import { closeOverview, h, haptic, toast } from './main.js';
+import { isLightMode, setLightMode } from './light-mode.js';
 
 // ---------------------------------------------------------------- Federano: themes
 // "Temas" (overview › Temas): the panel's look, chosen on this tablet. Tema 00 is the look the panel always had; Tema 01
@@ -39,6 +40,17 @@ export function openThemes() {
   if (sheet) sheet.remove();
   const cur = currentTheme();
   const close = h('button', 'th-close', '×'); close.setAttribute('aria-label', 'Fechar');
+  const light = h('button', 'ed-btn th-light');
+  light.type = 'button'; light.setAttribute('role', 'switch'); light.setAttribute('aria-label', 'Modo leve');
+  light.setAttribute('aria-describedby', 'th-light-help');
+  const showLight = () => {
+    light.textContent = `Modo leve: ${isLightMode() ? 'ligado' : 'desligado'}`;
+    light.setAttribute('aria-checked', String(isLightMode()));
+  };
+  showLight();
+  light.onclick = () => { haptic(); setLightMode(!isLightMode()); showLight(); toast(isLightMode() ? 'Modo leve ligado neste tablet.' : 'Modo normal restaurado.'); };
+  const lightHelp = h('p', 'th-desc', 'Modo leve: mantém o fundo parado e reduz animações. A letra e os controles continuam funcionando.');
+  lightHelp.id = 'th-light-help';
   const list = h('div', 'th-list');
   for (const t of THEMES) {
     const card = h('button', 'th-card' + (t.id === cur ? ' on' : ''));
@@ -47,7 +59,7 @@ export function openThemes() {
     card.onclick = () => { setTheme(t.id); closeOverview(); toast(`${t.name} · ${t.sub} aplicado`); sheet.remove(); sheet = null; };
     list.append(card);
   }
-  sheet = h('div', 'th-sheet', h('div', 'th-head', h('b', null, 'Temas'), h('span', null, 'Escolha o visual do painel. Dá para voltar quando quiser.'), close), list);
+  sheet = h('div', 'th-sheet', h('div', 'th-head', h('b', null, 'Temas'), h('span', null, 'Escolha o visual do painel. Dá para voltar quando quiser.'), light, close), lightHelp, list);
   sheet.id = 'themes';
   close.onclick = () => { haptic(); sheet.remove(); sheet = null; };
   document.body.append(sheet);

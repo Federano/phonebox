@@ -447,11 +447,12 @@ app.MapGet("/api/catalog", () => Results.Text($"{{\"cols\":{Catalog.Cols},\"rows
 
 // Federano: the tablet's page editor. What it may change (simple options; PC-only widgets) and the save of one page;
 // a dated copy of the settings is kept before the first tablet save in every 10 minutes.
-app.MapGet("/api/panel/editable", () =>
+app.MapGet("/api/panel/editable", (ConfigStore cfg) =>
 {
     var types = System.Text.Json.Nodes.JsonNode.Parse(Catalog.WidgetsJson)!.AsArray().Select(w => w?["type"]?.GetValue<string>()).OfType<string>().ToList();
     return Results.Json(new
     {
+        pcId = PanelEdit.ComputerId(cfg.Path),
         pcOnly = types.Where(PanelEdit.PcOnly),
         editable = types.Where(t => !PanelEdit.PcOnly(t)).ToDictionary(t => t, t => PanelEdit.EditableKeys(t).ToArray()),
     });
@@ -463,21 +464,31 @@ app.MapPost("/api/panel/page/{id}", async (string id, HttpRequest req, ConfigSto
     try { edit = await JsonSerializer.DeserializeAsync<PanelEdit.PageEdit>(req.Body, new JsonSerializerOptions(JsonSerializerDefaults.Web)); }
     catch (JsonException) { return Results.BadRequest(new { error = "Pedido inválido" }); }
     if (edit is null) return Results.BadRequest(new { error = "Pedido inválido" });
-    string current;
-    try { current = File.ReadAllText(cfg.Path); } catch (IOException ex) { return Results.Problem(ex.Message); }
-    var (json, err) = PanelEdit.Apply(current, id, edit);
-    if (err is not null) return Results.BadRequest(new { error = err });
-    if (DateTime.UtcNow - lastTabletBackup > TimeSpan.FromMinutes(10))
+    if (edit.PcId is not null && edit.PcId != PanelEdit.ComputerId(cfg.Path))
+        return Results.Json(new { error = "Esta edição pertence a outro PC e continua guardada no tablet." }, statusCode: 409);
+    lock (IconCommit)
     {
-        lastTabletBackup = DateTime.UtcNow;
-        try { File.Copy(cfg.Path, cfg.Path + ".antes-tablet-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"), overwrite: false); } catch (IOException) { }
+        var expectedVersion = cfg.Version;
+        string current;
+        try { current = File.ReadAllText(cfg.Path); } catch (IOException ex) { return Results.Problem(ex.Message); }
+        var (json, err) = PanelEdit.Apply(current, id, edit);
+        if (err is not null) return Results.Json(new { error = err }, statusCode: err == PanelEdit.Conflict ? 409 : 400);
+        if (DateTime.UtcNow - lastTabletBackup > TimeSpan.FromMinutes(10))
+        {
+            try
+            {
+                File.Copy(cfg.Path, cfg.Path + ".antes-tablet-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"), overwrite: false);
+                lastTabletBackup = DateTime.UtcNow;
+            }
+            catch (IOException) { }
+        }
+        var saveErr = cfg.Save(json!, expectedVersion, out var savedVersion);
+        if (saveErr is not null) return Results.Json(new { error = saveErr }, statusCode: saveErr == ConfigStore.Conflict ? 409 : 400);
+        var savedPage = cfg.Get().Pages.First(p => p.Id == id);
+        log.LogInformation("page {Page} edited on the tablet ({Count} widgets)", id, edit.Widgets.Count);
+        StateSignal.Poke();
+        return Results.Json(new { ok = true, version = savedVersion.ToString(), revision = savedPage.TabletEditRevision ?? PanelEdit.Revision(savedPage) });
     }
-    string? saveErr;
-    lock (IconCommit) saveErr = cfg.Save(json!, cfg.Version);
-    if (saveErr is not null) return Results.BadRequest(new { error = saveErr });
-    log.LogInformation("page {Page} edited on the tablet ({Count} widgets)", id, edit.Widgets.Count);
-    StateSignal.Poke();
-    return Results.Json(new { ok = true, version = cfg.VersionText });
 });
 
 // ---------------------------------------------------------------- webhook API: push data and events into the panel
@@ -862,7 +873,7 @@ app.MapGet("/api/widget/{page}/{widget}", (string page, string widget, bool? for
     runner.Get(page, widget, force == true) is { } r ? Results.Json(r) : Results.NotFound());
 
 app.MapGet("/api/config", (ConfigStore cfg, HttpRequest req, ShortcutIconUploads icons) =>
-    Results.Json(new { version = cfg.Version.ToString(), config = cfg.Get().ToPublic(req.Headers["X-PhoneBox-Device"].ToString(),
+    Results.Json(new { version = cfg.Version.ToString(), editorPcId = PanelEdit.ComputerId(cfg.Path), config = cfg.Get().ToPublic(req.Headers["X-PhoneBox-Device"].ToString(),
         s => icons.Revision(s.Id) is { } up ? (up, true) : (ShortcutIcons.Revision(s), false)) }));
 
 // Phones that have talked to this agent, with their settings (Settings › Phones).

@@ -23,6 +23,7 @@ import './widgets/spectrum.js';
 import './wake.js';
 import { openThemes } from './themes.js';
 import { openEditor } from './edit.js';
+import { discardPageEdit, editorDraft, editorJson, newEditId, overlayPageEdits, primeEditor, syncPageEdits } from './edit-sync.js';
 
 // PhoneBox desk panel. Pages are 12 × 6 grids of widgets, designed in the agent's settings page.
 // The panel talks to the PhoneBox agent through "/agent/*", which the Android shell proxies over USB
@@ -42,7 +43,7 @@ export const $ = (id) => document.getElementById(id);
 // The native bridge (window.Android) is in every frame, sandboxed widgets included, so each call carries a key that only
 // the panel's own frames receive (MainActivity.bridgeKey). This wrapper adds it.
 const BRIDGE = ['battery', 'buzz', 'haptic', 'is24Hour', 'pcs', 'selectPc', 'forgetPc', 'setBrightness', 'setHomeScreen', 'setOrientation',
-  'setPinned', 'setVolumeKeys', 'transport', 'sensors', 'version', 'canListen', 'listen', 'stopListening', 'cancelListening', 'trackpad', 'openVideo', 'setMirrorBubble', 'meetAlarm', 'meetAlarmStop'];
+  'setPinned', 'setVolumeKeys', 'transport', 'sensors', 'version', 'canListen', 'listen', 'stopListening', 'cancelListening', 'trackpad', 'openVideo', 'setMirrorBubble', 'meetAlarm', 'meetAlarmStop', 'savePage'];
 export const bridge = typeof Android === 'undefined' ? null : Object.fromEntries(BRIDGE.filter((m) => typeof Android[m] === 'function')
   .map((m) => [m, (...args) => Android[m](window.__phoneboxKey || '', ...args)]));
 // Live preview inside the agent's layout editor: the layout comes from the editor (unsaved), not from the agent.
@@ -73,7 +74,7 @@ export const store = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} },
 };
 
-export let cfg = PREVIEW ? { ...DEFAULT_CFG, pages: [] } : { ...DEFAULT_CFG, ...store.get('cfg', {}) };
+export let cfg = PREVIEW ? { ...DEFAULT_CFG, pages: [] } : overlayPageEdits({ ...DEFAULT_CFG, ...store.get('cfg', {}) });
 export let cfgVersion = null;
 export function setCfgVersion(v) { if (v != null) cfgVersion = v; }
 let configRequest = 0;
@@ -2090,15 +2091,57 @@ export function localWriteStored(v) {
   writeBarrier = configRequest + 1;
 }
 
+/** Apply a durable tablet draft immediately, including while the PC is unreachable. */
+export function applyEditorEdits() {
+  cfg = overlayPageEdits(cfg);
+  store.set('cfg', cfg);
+  buildLayout(); applyDisplay();
+}
+
+export function usePcPage(pageId) {
+  const draft = editorDraft(cfg.editorPcId, pageId);
+  if (!draft?.conflict) return;
+  discardPageEdit(cfg.editorPcId, pageId);
+  cfg = { ...cfg, pages: (cfg.pages || []).flatMap((p) => p.id === pageId ? (draft.conflict.remote ? [draft.conflict.remote] : []) : [p]) };
+  applyEditorEdits(); loadConfig();
+}
+
+// WebView request interception cannot read a POST body. The dedicated native bridge sends only this endpoint,
+// asynchronously, through the same authenticated USB / Wi-Fi link as the rest of the panel.
+export async function postPageEdit(pageId, body) {
+  if (!bridge) return editorJson(`${API}/panel/page/${encodeURIComponent(pageId)}`, {
+    method: 'POST', headers: { ...PANEL_HEADERS, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  if (!bridge.savePage) throw new Error('Atualize o app do tablet para sincronizar as edições.');
+  return new Promise((resolve, reject) => {
+    const requestId = newEditId();
+    const done = (e) => {
+      if (e.detail?.id !== requestId) return;
+      clearTimeout(timer); window.removeEventListener('federano-page-saved', done);
+      resolve({ status: e.detail.status, ok: e.detail.status >= 200 && e.detail.status < 300, data: e.detail.data || {} });
+    };
+    const timer = setTimeout(() => { window.removeEventListener('federano-page-saved', done); reject(new Error('offline')); }, 15000);
+    window.addEventListener('federano-page-saved', done);
+    try { bridge.savePage(pageId, JSON.stringify(body), requestId); }
+    catch (e) { clearTimeout(timer); window.removeEventListener('federano-page-saved', done); reject(e); }
+  });
+}
+
 export async function loadConfig() {
   if (PREVIEW) return;
   const request = ++configRequest;
   try {
-    const r = await api('/config');
+    let r = await api('/config');
+    r.config.editorPcId = r.editorPcId;
+    const synced = await syncPageEdits(r.config, postPageEdit);
+    for (const notice of synced.notices) toast(notice, 'err');
+    if (synced.saved && !synced.pending) toast('Página salva e sincronizada com o PC.');
+    if (synced.changed) { r = await api('/config'); r.config.editorPcId = r.editorPcId; }
     if (request < appliedConfigRequest || request < writeBarrier) return;
     const before = JSON.stringify(cfg);
     const first = cfgVersion === null;
-    cfg = { ...DEFAULT_CFG, ...r.config };
+    cfg = overlayPageEdits({ ...DEFAULT_CFG, ...r.config });
+    primeEditor(cfg.editorPcId, API, PANEL_HEADERS).catch(() => {});
     cfgVersion = r.version;
     appliedConfigRequest = request;
     if (first || JSON.stringify(cfg) !== before) {

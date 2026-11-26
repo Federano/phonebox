@@ -18,6 +18,9 @@ Leia este arquivo inteiro antes de mudar qualquer coisa.
    saber o que revisar.
 7. Não instale a atualização "0.9.x disponível" do PhoneBox original: ela apagaria o Federano.
 8. Não coloque chaves de API, tokens ou senhas em arquivos do repositório.
+9. Divida tarefas grandes em blocos de até 5 minitarefas e avance parte por parte, informando o progresso.
+10. Acumule as melhorias no código e nos testes para uma única atualização ao final. Não instale APKs nem substitua
+    o agente em execução durante essa preparação; aguarde o Fernando pedir a atualização final, mantendo a regra 2.
 
 ## Onde fica cada coisa
 
@@ -37,6 +40,7 @@ Arquivos do Federano que mais importam:
 - `www/widgets/lyrics.js` — tela da letra do Spotify e do podcast (fundo animado num worker, sincronia da letra).
 - `www/themes.js` — tela "Temas" (Tema 00 / Tema 01). Estilos do Tema 01 no fim de `www/style.css` (`body[data-ftheme="01"]`).
 - `www/edit.js` — editar a página pelo tablet. Agente: `PanelEdit.cs` (o que o tablet pode mudar).
+- `www/edit-sync.js` — catálogo offline, edições locais, sincronização e conflitos por PC.
 - `www/wake.js` — "Federano, ..." sempre ouvindo (desligado por padrão).
 - `www/mirror.js` — espelhamento e controles.
 - Agente: `SpotifyControl.cs`, `Lyrics.cs`, `MediaMonitor.cs`, `Skills.cs`, `Lan.cs` (lista do que o tablet pode pedir pelo Wi-Fi), `Program.cs` (rotas `/api/...`).
@@ -53,7 +57,7 @@ dotnet test PhoneBox.Agent.Tests
 Testes de tela (na pasta `tools/ui-tests`; o Chromium do Playwright já está instalado):
 
 ```
-npx playwright test lyrics.spec.js themes.spec.js edit-page.spec.js
+npx playwright test lyrics.spec.js themes.spec.js edit-page.spec.js edit-offline.spec.js
 ```
 
 Já falhavam antes e não são problema seu: `i18n-coverage.spec.js` (textos em vietnamita) e `navigation.spec.js:140`.
@@ -88,10 +92,19 @@ O arquivo sai em `android/app/build/outputs/apk/debug/app-debug.apk`. Se o `adb`
 - Botão "Pular propaganda" no podcast (+1 minuto) e comando de voz "Federano, pula a propaganda".
 - Pular propaganda automático (precisa de um modelo de voz; esperar a decisão do Fernando).
 - Animações da tela inicial no Tema 01 (relógio subindo, linha dos segundos, temperatura contando).
-- Nomes das opções do editor de página em português (hoje vêm em inglês do `widgets.json`).
-- Linhas muito longas da letra encostam na borda quando crescem no Tema 01.
 
 O Claude revisa o trabalho pelo `git log` (commits com `Feito-por: Gemini`).
+
+## Editor do tablet: português e uso offline
+
+- O catálogo em português fica em `CATALOG.pt`, no `www/i18n.js`; o editor preserva os valores técnicos e os textos do usuário.
+- Depois de uma conexão com o agente atualizado, o catálogo e as regras ficam disponíveis offline no tablet.
+- Salvar guarda uma edição durável e já aplica a organização no tablet. O envio ocorre quando o painel consegue alcançar
+  o agente no PC por USB, Wi-Fi ou Tailscale. Ter internet sem acesso ao PC não basta; não há serviço de nuvem.
+- Edições pertencem a um PC específico. Mudanças simultâneas na mesma página pedem uma escolha entre PC e tablet;
+  uma página removida no PC continua guardada localmente até o usuário descartar a edição.
+- O app Android usa a ponte nativa `savePage` para enviar o corpo JSON. Não use o proxy comum para POSTs com corpo:
+  a interceptação do WebView não consegue ler esse corpo.
 
 ## graphify
 

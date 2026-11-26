@@ -437,6 +437,27 @@ class MainActivity : Activity(), SensorEventListener {
         @JavascriptInterface
         fun pcs(key: String): String = if (ok(key)) link.pcsJson() else "[]"
 
+        /** The page editor is the only body-bearing endpoint this bridge exposes. Validation stays on the PC. */
+        @JavascriptInterface
+        fun savePage(key: String, pageId: String, json: String, requestId: String) {
+            if (!ok(key) || !pageId.matches(Regex("[A-Za-z0-9_-]{1,100}")) ||
+                !requestId.matches(Regex("[A-Za-z0-9-]{1,80}")) || json.length > 512_000) return
+            Thread {
+                var status = 503
+                var data = JSONObject().put("error", "Sem conexão com o PC.")
+                try {
+                    val reply = link.request("POST", "/api/panel/page/$pageId", json.toByteArray(Charsets.UTF_8), "application/json")
+                    status = reply.code
+                    val text = reply.body.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                    data = runCatching { JSONObject(text) }.getOrElse { JSONObject().put("error", "O PC não confirmou a edição.") }
+                } catch (_: Exception) { }
+                val result = JSONObject().put("id", requestId).put("status", status).put("data", data).toString()
+                runOnUiThread {
+                    if (!destroyed) web.evaluateJavascript("window.dispatchEvent(new CustomEvent('federano-page-saved', {detail:$result}));", null)
+                }
+            }.start()
+        }
+
         /** Switches to another paired computer and reloads the panel from it. */
         @JavascriptInterface
         fun selectPc(key: String, id: String) {

@@ -8,7 +8,7 @@ async function gatedLayout(page, layout, label = 'owned-layout') {
   const ready = new Promise(resolve => started = resolve);
   let bootstrapping = false;
   let firstNavigation = true;
-  await page.route('**/templates.json', async route => { started(); await gate; await route.continue(); });
+  await page.route('**/templates.json', async route => { started(); await gate; await route.continue().catch(() => {}); }); // the editor's offline catalog may ask too; its request can end with the page
   const wrapped = new Proxy(page, { get(target, property) {
     if (property === 'goto') return async (...args) => {
       if (firstNavigation) { firstNavigation = false; bootstrapping = args[0] === '/panel/'; }

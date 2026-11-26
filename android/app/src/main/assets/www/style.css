@@ -1575,10 +1575,15 @@ body[data-ftheme="01"] .w { border-color: #1c1c1f; box-shadow: none; }
 
 /* lyrics page: black, the photo only on the card, thin lines, the line being sung lit and glowing on the beat */
 body[data-ftheme="01"] .w.ly { background: #000; }
+/* Keep every lyric above the wave, including its highest point on a strong beat.
+   The canvas stays full-size; only the scrolling reading area stops before this lower band. */
+body[data-ftheme="01"] .w.ly:not(.ly-podcast) .ly-words { bottom: calc(10% + 6.5cqw + 24px); overflow: hidden; }
 body[data-ftheme="01"] .ly-bgphoto, body[data-ftheme="01"] .ly-bgveil, body[data-ftheme="01"] .ly-vig { display: none; }
 body[data-ftheme="01"] .ly-card { background: #000; border-left: 1px solid #1c1c1f; }
 body[data-ftheme="01"] .ly-chip { color: #6a6a70; font-weight: 500; letter-spacing: .14em; }
 body[data-ftheme="01"] .ly-line { font-weight: 300; color: #44444a; text-shadow: none; }
+body[data-ftheme="01"] .w.ly .ly-line { max-width: min(26ch, calc((100% - 24px) / 1.12)); overflow-wrap: anywhere; }
+body[data-ftheme="01"] .w.ly.ly-fs .ly-line { max-width: min(28ch, calc((100% - 24px) / 1.12)); }
 body[data-ftheme="01"] .ly-line.past { color: #2e2e33; }
 body[data-ftheme="01"] .ly-line .ly-tl { color: #3a3a40; }
 body[data-ftheme="01"] .ly-line.on { color: #fff; font-weight: 600; transform: scale(1.12); animation: m01-glowin .6s ease-out;
@@ -1762,3 +1767,6 @@ body[data-ftheme="01"] .ly-ctl2 { margin-top: -2px; }
 .mt-a-list { flex: 1; min-width: 0; display: grid; gap: 10px; align-content: center; }
 .mt-a-list .li { padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; } .mt-a-list .li span { display: block; font-size: 12px; color: var(--muted); } .mt-a-list .li b { font-size: 15px; }
 .mt-a-list .li.next { border-color: var(--accent, #ff2a4f); box-shadow: 0 0 18px rgba(var(--ambient), .2); } .mt-a-list .li.past { opacity: .4; }
+/* Modo leve (Temas): the lyrics page without its cosmetic CSS animations; the words show at once */
+body[data-flight="1"] .w.ly *, body[data-flight="1"] .w.ly *::before, body[data-flight="1"] .w.ly *::after { animation: none !important; }
+body[data-flight="1"] .w.ly .ly-pname .ly-w { opacity: 1; transform: none; }

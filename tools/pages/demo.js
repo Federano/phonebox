@@ -97,6 +97,10 @@
     return c;
   }
   const cfgVersion = () => store.get('pb-demo-version', 1);
+  const pageRevision = (p) => JSON.stringify((p.widgets || []).map((w) => ({
+    id: w.id, type: w.type, x: w.x, y: w.y, w: w.w, h: w.h, appearance: w.appearance || null,
+    options: w.type === 'command' ? Object.fromEntries(Object.entries(w.options || {}).filter(([k]) => k === 'title' || k === 'interval')) : w.options || null,
+  })));
   // every widget of the layout, Smart Stack children included (AgentConfig.Widgets)
   const widgets = (c) => (c.pages || []).flatMap((p) => p.widgets || []).flatMap((w) => [w, ...(w.type === 'stack' ? (w.options?.widgets || []).filter((x) => x.enabled !== false) : [])]);
   const allows = (c, test) => widgets(c).some((w) => test(w.type) && w.options?.control === true);
@@ -112,6 +116,7 @@
       weather: c.weather, codexBar: c.codexBar, night: c.night, display: c.display,
       federano: { wakeWord: !!c.federano?.wakeWord, wakeOffline: c.federano?.wakeOffline !== false },
       pages: (c.pages || []).map((p) => ({ id: p.id, title: p.title, icon: p.icon, enabled: p.enabled !== false, idleSec: p.idleSec ?? null, appearance: p.appearance ?? null,
+        editRevision: pageRevision(p), tabletEditId: p.tabletEditId || null, tabletEditRevision: p.tabletEditRevision || null,
         widgets: (p.widgets || []).map((w) => ({ id: w.id, type: w.type, x: w.x, y: w.y, w: w.w, h: w.h, appearance: w.appearance ?? null, options: options(w) })) })),
       // iconRev / iconUpload: the agent sets them when a shortcut has a picture (and when the user uploaded it). The demo
       // has no uploads and serves no /agent/api/shortcuts/icon, so a config that sets them also needs that image mocked
@@ -510,7 +515,7 @@
     if (path === '/api/controls/state') return json(await deckState());
     if (path.startsWith('/api/controls/command/') && method === 'POST') return json(await controlCommand(path.split('/').pop(), q));
     if (path === '/api/state') return json(state(q.has('ev') ? +q.get('ev') : null));
-    if (path === '/api/config') return json({ version: cfgVersion(), config: publicConfig(await config()) });
+    if (path === '/api/config') return json({ version: cfgVersion(), editorPcId: 'demo-pc', config: publicConfig(await config()) });
     // Federano "Reuniões": today's meetings around the demo's clock, a call that can be started by "opening" one
     if (path === '/api/meet') {
       // the meetings stay put once seen (anchored to the first ask), so a test can move the clock up to one
@@ -529,16 +534,20 @@
     }
     if (path === '/api/meet/mirror' && method === 'POST') return json({ ok: false, error: 'Na demonstração não há Meet para mostrar.' });
     // Federano: the tablet's page editor (the agent checks more: PC-only widgets, option values)
-    if (path === '/api/panel/editable') return json({ pcOnly: ['command', 'html', 'shortcuts', 'button', 'image', 'camera', 'stack', 'ha'], editable: { clock: ['status', 'weather', 'date'], analog: ['seconds', 'numbers', 'zone', 'label'], note: ['title', 'text'], weather: [], lyrics: [] } });
+    if (path === '/api/panel/editable') return json({ pcId: 'demo-pc', pcOnly: ['command', 'html', 'shortcuts', 'button', 'image', 'camera', 'stack', 'ha'], editable: { clock: ['status', 'weather', 'date'], analog: ['seconds', 'numbers', 'zone', 'label'], note: ['title', 'text'], weather: [], lyrics: [] } });
     if (path.startsWith('/api/panel/page/') && method === 'POST') {
       const id = decodeURIComponent(path.slice('/api/panel/page/'.length)), edit = JSON.parse(body || '{}');
       const c = await config(); const pg = (c.pages || []).find((p) => p.id === id);
       if (!pg) return json({ error: 'Página não encontrada' }, 400);
+      if (edit.pcId && edit.pcId !== 'demo-pc') return json({ error: 'Esta edição pertence a outro PC.' }, 409);
+      if (edit.editId && pg.tabletEditId === edit.editId) return json({ ok: true, version: cfgVersion(), revision: pg.tabletEditRevision });
+      if (edit.baseRevision && edit.baseRevision !== pageRevision(pg)) return json({ error: 'Esta página também mudou no PC.' }, 409);
       const old = Object.fromEntries((pg.widgets || []).map((w) => [w.id, w]));
       pg.widgets = edit.widgets.map((w) => ({ ...(old[w.id] || {}), id: w.id || 't' + Math.random().toString(36).slice(2, 8), type: w.type, x: w.x, y: w.y, w: w.w, h: w.h, options: { ...((old[w.id] || {}).options || {}), ...(w.options || {}) } }));
+      pg.tabletEditId = edit.editId || null; pg.tabletEditRevision = pageRevision(pg);
       store.set('pb-demo-config', c);
       store.set('pb-demo-version', cfgVersion() + 1);
-      return json({ ok: true });
+      return json({ ok: true, version: cfgVersion(), revision: pg.tabletEditRevision });
     }
     if (path.startsWith('/api/widget/') && path.endsWith('/note') && method === 'POST') {
       const parts = path.split('/');
@@ -826,7 +835,12 @@
   if (!window.Android && document.currentScript.dataset.panel !== undefined)
     window.Android = { battery: () => JSON.stringify({ level: 82, plugged: true, temp: 29.5 }), transport: () => 'usb', version: () => VERSION,
       is24Hour: () => !new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions().hour12,
-      haptic() {}, buzz() {}, setBrightness() {}, setVolumeKeys() {} };
+      haptic() {}, buzz() {}, setBrightness() {}, setVolumeKeys() {},
+      savePage(_key, pageId, body, requestId) {
+        window.fetch('/agent/api/panel/page/' + encodeURIComponent(pageId), { method: 'POST', body }).then(async (r) => {
+          window.dispatchEvent(new CustomEvent('federano-page-saved', { detail: { id: requestId, status: r.status, data: await r.json() } }));
+        }).catch(() => window.dispatchEvent(new CustomEvent('federano-page-saved', { detail: { id: requestId, status: 503, data: {} } })));
+      } };
 
   // Served by tools/demo-server.py: webhooks sent to that server with curl arrive here. Each tab applies them itself.
   if (document.currentScript.dataset.relay !== undefined && window.EventSource) {

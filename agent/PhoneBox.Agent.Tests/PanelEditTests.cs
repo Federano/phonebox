@@ -79,4 +79,70 @@ public class PanelEditTests
         Assert.NotNull(PanelEdit.Apply(Settings, "home", new([W("c1", "clock", 0, 0, 6, 4, new { weather = "sim" })])).Error);
         Assert.NotNull(PanelEdit.Apply(Settings, "outra", new([])).Error);
     }
+
+    static string Revision(string json) => PanelEdit.Revision(JsonNode.Parse(json)!["pages"]![0]!
+        .Deserialize<PageConfig>(new JsonSerializerOptions(JsonSerializerDefaults.Web))!);
+
+    [Fact]
+    public void OfflineEditRefusesANewerPageButAllowsAnExplicitResolution()
+    {
+        var baseRevision = Revision(Settings);
+        var changed = JsonNode.Parse(Settings)!;
+        changed["pages"]![0]!["widgets"]![0]!["options"]!["weather"] = false;
+        var current = changed.ToJsonString();
+        var widgets = new List<PanelEdit.WidgetEdit> { W("c1", "clock", 0, 0, 6, 4, new { weather = true }) };
+        Assert.Equal(PanelEdit.Conflict, PanelEdit.Apply(current, "home", new(widgets, baseRevision, Guid.NewGuid().ToString())).Error);
+        var resolved = PanelEdit.Apply(current, "home", new(widgets, Revision(current), Guid.NewGuid().ToString()));
+        Assert.Null(resolved.Error);
+        Assert.True(Widgets(resolved.Json!)[0]!["options"]!["weather"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public void OfflineWidgetIdAndAcknowledgementSurviveALostReply()
+    {
+        var widgetId = "t" + Guid.NewGuid().ToString("N");
+        var editId = Guid.NewGuid().ToString("N");
+        var edit = new PanelEdit.PageEdit([W(widgetId, "note", 0, 0, 4, 3, new { text = "offline" })], Revision(Settings), editId);
+        var first = PanelEdit.Apply(Settings, "home", edit);
+        Assert.Null(first.Error);
+        Assert.Equal(widgetId, Widgets(first.Json!)[0]!["id"]!.GetValue<string>());
+        var page = JsonNode.Parse(first.Json!)!["pages"]![0]!;
+        Assert.Equal(editId, page["tabletEditId"]!.GetValue<string>());
+        Assert.Equal(Revision(first.Json!), page["tabletEditRevision"]!.GetValue<string>());
+        var retry = PanelEdit.Apply(first.Json!, "home", edit);
+        Assert.Null(retry.Error);
+        Assert.Equal(first.Json, retry.Json);
+        Assert.Single(Widgets(retry.Json!).AsArray());
+    }
+
+    [Fact]
+    public void ReplayingAnAcknowledgedEditDoesNotUndoASubsequentPcChange()
+    {
+        var edit = new PanelEdit.PageEdit([W("c1", "clock", 0, 0, 6, 4)], Revision(Settings), Guid.NewGuid().ToString());
+        var first = PanelEdit.Apply(Settings, "home", edit).Json!;
+        var pc = JsonNode.Parse(first)!;
+        pc["pages"]![0]!["widgets"]![0]!["options"]!["weather"] = false;
+        var current = pc.ToJsonString();
+        var retry = PanelEdit.Apply(current, "home", edit);
+        Assert.Equal(current, retry.Json);
+        Assert.False(Widgets(retry.Json!)[0]!["options"]!["weather"]!.GetValue<bool>());
+        Assert.NotEqual(Revision(current), pc["pages"]![0]!["tabletEditRevision"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void RepeatedWidgetIdsAreRejectedBeforeTheyCanBeNormalizedIntoNewWidgets()
+    {
+        var edit = new PanelEdit.PageEdit([W("n", "note", 0, 0, 3, 2), W("n", "note", 3, 0, 3, 2)]);
+        Assert.NotNull(PanelEdit.Apply(Settings, "home", edit).Error);
+    }
+
+    [Fact]
+    public void PrivateCommandChangesDoNotExposeSecretsOrConflictWithLayoutEdits()
+    {
+        var pc = JsonNode.Parse(Settings)!;
+        pc["pages"]![0]!["widgets"]![1]!["options"]!["command"] = "another private command";
+        Assert.Equal(Revision(Settings), Revision(pc.ToJsonString()));
+        pc["pages"]![0]!["widgets"]![1]!["options"]!["title"] = "Outro título";
+        Assert.NotEqual(Revision(Settings), Revision(pc.ToJsonString()));
+    }
 }

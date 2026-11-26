@@ -8,6 +8,7 @@ async function open(page) {
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto('/panel/');
+  await page.waitForFunction(() => window.__pbUp);
   await page.evaluate(() => {
     localStorage.clear();
     localStorage.setItem('pb-demo-config', JSON.stringify({ night: { enabled: false }, shortcuts: [],
@@ -57,6 +58,7 @@ test('move, change an option, add, remove and save; a PC-only widget keeps its o
   await page.screenshot({ path: test.info().outputPath('editor.png') });
   await page.locator('.ed-save').click();
   await expect(page.locator('#toast')).toContainText('Página salva');
+  await expect.poll(async () => (await saved(page)).map((w) => w.type).sort()).toEqual(['analog', 'clock', 'note']);
   const ws = await saved(page);
   expect(ws.map((w) => w.type).sort()).toEqual(['analog', 'clock', 'note']);
   expect(ws.find((w) => w.type === 'note')).toMatchObject({ x: 6, y: 2 });

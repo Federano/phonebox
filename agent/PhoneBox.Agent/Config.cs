@@ -69,6 +69,7 @@ public sealed class AgentConfig
         pages = PagesFor(deviceId).Select(p => new
         {
             p.Id, p.Title, p.Icon, p.Enabled, p.IdleSec, p.Appearance,
+            editRevision = PanelEdit.Revision(p), p.TabletEditId, p.TabletEditRevision,
             widgets = (p.Widgets ?? []).Select(w => new
             {
                 w.Id, w.Type, w.X, w.Y, w.W, w.H, w.Appearance,
@@ -254,6 +255,9 @@ public sealed class CursorConfig
 
 public sealed class PageConfig
 {
+    /// <summary>Last durable tablet edit and its resulting revision, for safe retries after a lost reply.</summary>
+    public string? TabletEditId { get; set; }
+    public string? TabletEditRevision { get; set; }
     public AppearanceConfig? Appearance { get; set; }
     public string Id { get; set; } = "";
     public string Title { get; set; } = "";
