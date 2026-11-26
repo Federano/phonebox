@@ -1831,7 +1831,8 @@ body[data-ftheme="01"] .offer-count { font-weight: 400; }
 .w.ly.ly-video .ly-ctl2, .w.ly.ly-video .ly-talk { display: none !important; }
 
 /* Fernando's adjustments (26/11): the podcast's text scrolls with a finger; the picture has no light frame and no red wipe */
-.w.ly.ly-podcast .ly-words { overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; }
+/* only the vertical scroll is kept here: a sideways swipe still flips pages, in both directions */
+.w.ly.ly-podcast .ly-words { overflow: hidden auto; overscroll-behavior: auto contain; }
 .w.ly.ly-podcast .ly-pdesc { max-height: none; -webkit-mask-image: none; mask-image: none; }
 body[data-ftheme="01"] .ly-pic { background: transparent; }
 body[data-ftheme="01"] .ly-pic::after { display: none; }

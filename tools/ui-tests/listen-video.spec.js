@@ -64,3 +64,15 @@ test('tapping the song in the media widget opens the screen of what is playing n
   expect(await page.evaluate(() => localStorage.getItem('federano.listenVideo'))).toBe(app && app !== 'Spotify' ? '1' : null);
   expect(errors).toEqual([]);
 });
+
+test('the podcast and "Só ouvir" text scrolls up and down without holding sideways page swipes', async ({ page }) => {
+  await page.goto('/panel/');
+  await page.evaluate(() => {
+    localStorage.clear();
+    localStorage.setItem('pb-demo-config', JSON.stringify({ night: { enabled: false }, shortcuts: [], pages: [{ id: 'letra', title: 'Letra', enabled: true, widgets: [{ id: 'ly', type: 'lyrics', x: 0, y: 0, w: 12, h: 6, options: {} }] }] }));
+  });
+  await page.reload();
+  await page.evaluate(() => document.querySelector('.w.ly').classList.add('ly-podcast'));
+  const css = await page.locator('.w.ly .ly-words').evaluate((n) => { const s = getComputedStyle(n); return [s.overflowX, s.overflowY, s.overscrollBehaviorX, s.overscrollBehaviorY, s.touchAction].join(' '); });
+  expect(css).toBe('hidden auto auto contain auto');
+});
