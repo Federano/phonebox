@@ -21,6 +21,10 @@ Leia este arquivo inteiro antes de mudar qualquer coisa.
 9. Divida tarefas grandes em blocos de até 5 minitarefas e avance parte por parte, informando o progresso.
 10. Acumule as melhorias no código e nos testes para uma única atualização ao final. Não instale APKs nem substitua
     o agente em execução durante essa preparação; aguarde o Fernando pedir a atualização final, mantendo a regra 2.
+11. **Registro de quem fez o quê.** No fim de cada edição, escreva no topo do seu arquivo o que você fez:
+    o Claude escreve em `claude.txt`, o ChatGPT (ou outra IA) em `gpt.txt`. Antes de começar, leia os dois para saber o
+    que a outra IA fez por último. Cada registro: data e hora, o que mudou para o Fernando, arquivos, commit (ou "sem
+    commit"), testes que passaram ou falharam, e se instalou no tablet ou trocou o agente.
 
 ## Onde fica cada coisa
 

@@ -10,3 +10,8 @@ Leia também o AGENTS.md (regras do dono, onde fica cada coisa, como testar).
 - Não cole saídas longas: filtre (`Select-Object -First/-Last`, `grep`).
 - Uma tarefa por conversa: use `/compact` quando a conversa crescer e `/clear` ao trocar de tarefa.
 - Prefira a solução mais simples que funciona (modo Ponytail).
+
+## Registro de quem fez o quê
+
+- Antes de começar, leia `claude.txt` e `gpt.txt` (o último que cada IA fez).
+- No fim de cada edição, escreva no topo de `claude.txt` o que você fez (regra 11 do AGENTS.md).

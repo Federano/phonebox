@@ -1767,6 +1767,3 @@ body[data-ftheme="01"] .ly-ctl2 { margin-top: -2px; }
 .mt-a-list { flex: 1; min-width: 0; display: grid; gap: 10px; align-content: center; }
 .mt-a-list .li { padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; } .mt-a-list .li span { display: block; font-size: 12px; color: var(--muted); } .mt-a-list .li b { font-size: 15px; }
 .mt-a-list .li.next { border-color: var(--accent, #ff2a4f); box-shadow: 0 0 18px rgba(var(--ambient), .2); } .mt-a-list .li.past { opacity: .4; }
-/* Modo leve (Temas): the lyrics page without its cosmetic CSS animations; the words show at once */
-body[data-flight="1"] .w.ly *, body[data-flight="1"] .w.ly *::before, body[data-flight="1"] .w.ly *::after { animation: none !important; }
-body[data-flight="1"] .w.ly .ly-pname .ly-w { opacity: 1; transform: none; }
