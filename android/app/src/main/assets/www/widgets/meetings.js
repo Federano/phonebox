@@ -54,6 +54,9 @@ tabletCalendar.subscribe(() => {
   if (loading) loading.then(() => { lastLoad = 0; load(true); });
   else load(true);
 });
+/** Federano Home: today's meetings (same data and poll as the Reuniões page) and its "Entrar". */
+export const meetingsToday = () => load(false);
+export const joinMeeting = (ev) => join(ev, false);
 const meetPage = () => pages.find((p) => (p.widgets || []).some((w) => w.type === 'meetings'));
 const opts = () => (meetPage()?.widgets || []).find((w) => w.type === 'meetings')?.options || {};
 

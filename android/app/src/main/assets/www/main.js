@@ -18,6 +18,7 @@ import './widgets/dictate.js';
 import './widgets/federano.js';
 import './widgets/lyrics.js';
 import './widgets/meetings.js';
+import './widgets/fhome.js';
 import './mirror.js';
 import './widgets/camera.js';
 import './widgets/spectrum.js';
