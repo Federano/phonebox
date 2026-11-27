@@ -1929,3 +1929,21 @@ body[data-ftheme="01"] .toast.err::after { background: #ef4444; }
 /* the mirror's "back to the music" button, left of minimize */
 .mirror-music { right: 152px; }
 .mirror:not(.chrome) .mirror-music { pointer-events: none; }
+
+/* Tema 01: the mirrored video's controls in the theme (they had YouTube's red-and-white look): thin round buttons with a
+   hairline border, the play button ringed in the theme's red with its ripple, thin bars, red progress, white small thumbs */
+body[data-ftheme="01"] .mirror-ctl::before { background: linear-gradient(to top, rgba(0, 0, 0, .85), rgba(0, 0, 0, 0)); }
+body[data-ftheme="01"] .mc-btn, body[data-ftheme="01"] .mirror-mini, body[data-ftheme="01"] .mirror-close {
+  background: rgba(0, 0, 0, .55); border: 1px solid rgba(255, 255, 255, .16); backdrop-filter: none; }
+body[data-ftheme="01"] .mc-btn svg { width: 40%; height: 40%; }
+body[data-ftheme="01"] .mc-btn:active { background: rgba(255, 42, 79, .18); border-color: #ff2a4f; }
+body[data-ftheme="01"] .mc-play { background: rgba(0, 0, 0, .45); border: 1.5px solid #ff2a4f; position: relative; overflow: visible; }
+body[data-ftheme="01"] .mc-play::after { content: ""; position: absolute; inset: -1px; border-radius: 50%; border: 1px solid #ff2a4f; opacity: 0; animation: m01-ripple 2.4s ease-out infinite; }
+body[data-ftheme="01"] .mc-mic.on { background: #ff2a4f; border-color: #ff2a4f; }
+body[data-ftheme="01"] .mc-time, body[data-ftheme="01"] .mc-voln { font-family: ui-monospace, "Roboto Mono", monospace; font-size: 13px; color: #c8c8cc; text-shadow: none; }
+body[data-ftheme="01"] .mc-volbox { border-left-color: #2a2a2e; }
+body[data-ftheme="01"] .mirror .mc-seek::-webkit-slider-runnable-track, body[data-ftheme="01"] .mirror .mc-vol::-webkit-slider-runnable-track { height: 2px; border-radius: 1px;
+  background: linear-gradient(to right, #ff2a4f var(--p), rgba(255, 255, 255, .18) var(--p)); }
+body[data-ftheme="01"] .mirror .mc-vol::-webkit-slider-runnable-track { background: linear-gradient(to right, #f4f4f6 var(--p), rgba(255, 255, 255, .18) var(--p)); }
+body[data-ftheme="01"] .mirror .mc-seek::-webkit-slider-thumb, body[data-ftheme="01"] .mirror .mc-vol::-webkit-slider-thumb { width: 14px; height: 14px; margin-top: -6px; background: #fff; box-shadow: 0 0 0 3px rgba(255, 42, 79, .25); }
+body[data-ftheme="01"] .mc-said { background: rgba(6, 6, 8, .94); border: 1px solid #1c1c1f; }
