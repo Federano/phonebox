@@ -1753,6 +1753,8 @@ export function flashTitle() {
 
 export function onScroll() {
   const p = Math.round(pager.scrollLeft / window.innerWidth);
+  // the page in view carries "cur": Tema 01 plays its widgets' entrance when it arrives
+  for (let i = 0; i < pager.children.length; i++) pager.children[i].classList.toggle('cur', i === p);
   if (p === curPage) return;
   const prev = curPage;
   curPage = p;

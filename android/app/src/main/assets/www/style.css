@@ -1866,3 +1866,28 @@ body[data-ftheme="01"].f-rail-off .f-rail-tog { left: 0; }
 .w.ly .ly-vbtn { display: none; }
 .w.ly.ly-video .ly-vbtn { display: inline-flex; align-items: center; font-size: clamp(11px, 2.6cqmin, 14px); font-weight: 700; padding: 6px 12px; border-radius: 999px; background: rgba(255, 255, 255, .14); color: #fff; }
 .w.ly .ly-vbtn:disabled { opacity: .45; }
+
+/* Tema 01: motion where there was none (Fernando, 27/11). Short, transform/opacity only, and none with reduced motion.
+   - each page's widgets arrive one after another when the page comes into view
+   - the playing song's picture breathes with a faint red light; buttons give way under the finger
+   - the overview's pages arrive one after another; the rail's icon pops when its page is reached */
+@media (prefers-reduced-motion: no-preference) {
+  body[data-ftheme="01"] .page.cur .w { animation: m01-win .6s cubic-bezier(.16, 1, .3, 1) both; }
+  body[data-ftheme="01"] .page.cur .w:nth-child(2) { animation-delay: .06s; }
+  body[data-ftheme="01"] .page.cur .w:nth-child(3) { animation-delay: .12s; }
+  body[data-ftheme="01"] .page.cur .w:nth-child(4) { animation-delay: .18s; }
+  body[data-ftheme="01"] .page.cur .w:nth-child(5) { animation-delay: .24s; }
+  body[data-ftheme="01"] .page.cur .w:nth-child(n+6) { animation-delay: .3s; }
+  @keyframes m01-win { from { opacity: 0; transform: translateY(16px) scale(.985); } }
+  body[data-ftheme="01"] .w-media.playing .art-wrap { animation: m01-art 3.2s ease-in-out infinite; }
+  @keyframes m01-art { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 42, 79, 0); transform: scale(1); } 50% { box-shadow: 0 0 26px 2px rgba(255, 42, 79, .28); transform: scale(1.015); } }
+  body[data-ftheme="01"] .w button, body[data-ftheme="01"] .ov-tile { transition: transform .15s ease, background-color .2s, color .2s, opacity .2s; }
+  body[data-ftheme="01"] .w button:active { transform: scale(.93); }
+  body[data-ftheme="01"] #overview:not([hidden]) .ov-tile { animation: m01-win .45s cubic-bezier(.16, 1, .3, 1) both; }
+  body[data-ftheme="01"] #overview:not([hidden]) .ov-tile:nth-child(2) { animation-delay: .04s; }
+  body[data-ftheme="01"] #overview:not([hidden]) .ov-tile:nth-child(3) { animation-delay: .08s; }
+  body[data-ftheme="01"] #overview:not([hidden]) .ov-tile:nth-child(4) { animation-delay: .12s; }
+  body[data-ftheme="01"] #overview:not([hidden]) .ov-tile:nth-child(5) { animation-delay: .16s; }
+  body[data-ftheme="01"] #overview:not([hidden]) .ov-tile:nth-child(n+6) { animation-delay: .2s; }
+  body[data-ftheme="01"] .f-rail-i.on svg { animation: m01-pop .45s ease-out; }
+}
