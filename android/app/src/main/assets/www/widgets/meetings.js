@@ -66,6 +66,8 @@ async function join(ev, withTablet) {
   const r = await post(`/meet/open?url=${encodeURIComponent(ev.meet)}${acct ? '&account=' + encodeURIComponent(acct) : ''}`);
   if (!r.ok) { toast(r.error || 'Não consegui abrir o Meet.', 'err'); return; }
   toast('Abrindo o Meet no PC…');
+  // "Entrar": the Meet opens in the PC's browser, then the tablet asks whether to bring its screen here
+  if (!withTablet) withTablet = await askTablet();
   if (withTablet) {
     // wait for the call to start in Chrome, then show it here
     for (let i = 0; i < 30; i++) {
@@ -75,6 +77,20 @@ async function join(ev, withTablet) {
     }
     toast('Entre na chamada no PC; depois toque em "Ver o Meet no tablet".');
   }
+}
+// the question after "Entrar" (10 s; no answer = the Meet stays on the PC only)
+function askTablet() {
+  return new Promise((done) => {
+    document.querySelector('.mt-ask')?.remove();
+    const yes = h('button', 'mt-a-join solid', 'Sim, ver no tablet'), no = h('button', 'mt-a-join', 'Não, só no PC');
+    const box = h('div', 'mt-ask', h('b', null, 'Levar a tela da Meet para o tablet?'), h('p', null, 'A Meet está abrindo no navegador do PC. No tablet ela aparece em tela cheia, como os vídeos.'), h('div', 'mt-a-row', yes, no));
+    let over = false;
+    const end = (v) => { if (over) return; over = true; clearTimeout(timer); box.classList.remove('in'); setTimeout(() => box.remove(), 400); done(v); };
+    const timer = setTimeout(() => end(false), 10000);
+    yes.onclick = () => { haptic(); end(true); }; no.onclick = () => { haptic(); end(false); };
+    document.body.append(box);
+    requestAnimationFrame(() => requestAnimationFrame(() => box.classList.add('in')));
+  });
 }
 async function showOnTablet() {
   haptic();
@@ -95,7 +111,12 @@ function showAlert(ev, loud) {
   const quiet = () => { if (loud && bridge && bridge.meetAlarmStop) bridge.meetAlarmStop(); };
   alertBox?.remove();
   const left = () => mins(ev.start - Date.now());
-  const ring = h('div', 'mt-ring', String(left()));
+  const lead = (Number.isFinite(+opts().alertMin) ? +opts().alertMin : 5) * 60000 || 300000;
+  const num = h('b', null, String(left()));
+  const ring = h('div', 'mt-ring', num);
+  ring.insertAdjacentHTML('afterbegin', '<svg viewBox="0 0 100 100" aria-hidden="true"><circle class="bg" cx="50" cy="50" r="46"/><circle class="fg" cx="50" cy="50" r="46" stroke-dasharray="289"/></svg>');
+  const frac = () => Math.max(0, Math.min(1, (ev.start - Date.now()) / lead));
+  const paintRing = () => { const f = frac(); ring.querySelector('.fg').style.strokeDashoffset = String(289 * (1 - f)); alertBox?.querySelector('.mt-abox')?.style.setProperty('--left', String(f)); num.textContent = left() > 0 ? String(left()) : 'já'; };
   const when = h('div', 'mt-when', left() > 0 ? `Começa em ${left()} min` : 'Começando agora');
   const close = () => { quiet(); clearInterval(tick); alertBox?.remove(); alertBox = null; };
   const go = h('button', 'mt-abtn go', 'Entrar agora'), goTab = h('button', 'mt-abtn', 'Entrar e ver no tablet'), later = h('button', 'mt-abtn', 'Lembrar em 2 min');
@@ -103,11 +124,13 @@ function showAlert(ev, loud) {
   goTab.onclick = () => { close(); join(ev, true); };
   later.onclick = () => { haptic(); close(); setTimeout(() => showAlert(ev, loud), 120000); };
   const x = h('button', 'mt-ax', '×'); x.setAttribute('aria-label', 'Fechar'); x.onclick = () => { haptic(); close(); };
-  alertBox = h('div', 'mt-alert', h('div', 'mt-abox', x,
+  alertBox = h('div', 'mt-alert' + (loud ? ' loud' : ''), h('div', 'mt-abox', x,
     h('div', 'mt-ahead', ring, h('div', null, when, h('div', 'mt-atitle', ev.title), h('div', 'mt-asub', `${hm(ev.start)} – ${hm(ev.end)}${ev.people ? ` · ${ev.people} pessoas` : ''}`))),
     h('div', 'mt-arow', go, goTab, later)));
   document.body.append(alertBox);
-  const tick = setInterval(() => { ring.textContent = String(left()); when.textContent = left() > 0 ? `Começa em ${left()} min` : 'Começando agora'; if (Date.now() > ev.end) close(); }, 15000);
+  paintRing();
+  requestAnimationFrame(() => requestAnimationFrame(() => alertBox?.classList.add('in')));
+  const tick = setInterval(() => { paintRing(); when.textContent = left() > 0 ? `Começa em ${left()} min` : 'Começando agora'; if (left() <= 0) alertBox?.classList.add('loud'); if (Date.now() > ev.end) close(); }, 1000);
 }
 async function checkAlerts() {
   if (!meetPage() || document.body.classList.contains('night')) return;
@@ -140,10 +163,11 @@ W.meetings = {
     box.append(h('div', 'mt-ag', h('div', 'mt-lbl', 'Hoje'), day, list, note), h('div', 'mt-side', nextLbl, big, ttl, sub, joinBtn, live, ctl));
     // four looks: Lista (the list and the next meeting), Linha do tempo, Foco na próxima, Relógio do dia. The small button
     // in the corner switches them; the choice is kept on this tablet (or set in the page's options).
-    const LOOKS = ['lista', 'linha', 'foco', 'relogio'], NAMES = { lista: 'Lista', linha: 'Linha do tempo', foco: 'Foco na próxima', relogio: 'Relógio do dia' };
-    let look = 'lista';
-    try { look = localStorage.getItem('federano.meetLook') || o?.look || 'lista'; } catch (_) { look = o?.look || 'lista'; }
-    if (!LOOKS.includes(look)) look = 'lista';
+    const LOOKS = ['dia', 'lista', 'linha', 'foco', 'relogio'], NAMES = { dia: 'Dia', lista: 'Lista', linha: 'Linha do tempo', foco: 'Foco na próxima', relogio: 'Relógio do dia' };
+    // "Dia" is the look Fernando chose (27/11): it replaces an older remembered choice once
+    let look = 'dia';
+    try { look = localStorage.getItem('federano.meetLook2') || 'dia'; } catch (_) {}
+    if (!LOOKS.includes(look)) look = 'dia';
     const alt = h('div', 'mt-alt'); const lookBtn = h('button', 'mt-lookbtn'); lookBtn.setAttribute('aria-label', 'Trocar o visual');
     box.append(alt, lookBtn);
     // the Google account this tablet reads (chosen once); a tap here picks another one
@@ -153,7 +177,7 @@ W.meetings = {
       accBtn.onclick = () => { haptic(); tabletCalendar.choose().then(showAcc, () => toast('Não deu para trocar a conta agora.', 'err')); };
       box.append(accBtn); showAcc();
     }
-    const setLook = (l) => { look = l; box.dataset.look = l; lookBtn.textContent = NAMES[l] + ' ▸'; try { localStorage.setItem('federano.meetLook', l); } catch (_) {} altKey = ''; render(); };
+    const setLook = (l) => { look = l; box.dataset.look = l; lookBtn.textContent = NAMES[l] + ' ▸'; try { localStorage.setItem('federano.meetLook2', l); } catch (_) {} altKey = ''; render(); };
     lookBtn.onclick = () => { haptic(); setLook(LOOKS[(LOOKS.indexOf(look) + 1) % LOOKS.length]); };
     let altKey = '';
     alt.addEventListener('click', (e) => {
@@ -194,7 +218,20 @@ W.meetings = {
         const joinBtns = cur && cur.meet && !call ? `<button class="mt-a-join solid" data-act="join:${ci}">Entrar</button><button class="mt-a-join" data-act="join:${ci}" data-tab="1">Entrar e ver no tablet</button>` : '';
         const empty = !evs.length ? `<div class="mt-a-empty">${data && !data.calendars ? 'Cole o endereço secreto iCal da agenda “Trabalho” nas configurações do Federano no PC.' : 'Nenhuma reunião hoje.'}</div>` : '';
         const head = cur ? `<div class="mt-lbl mt-red">${inMeeting ? 'Agora' : 'Próxima reunião'}</div><div class="mt-a-title">${esc(cur.title)}</div><div class="mt-sub">${hm(cur.start)} – ${hm(cur.end)}${cur.meet ? ' · Google Meet' : cur.location ? ' · ' + esc(cur.location) : ''}${cur.people ? ` · ${cur.people} pessoas` : ''}</div>` : '<div class="mt-a-title">Nada mais hoje</div>';
-        if (look === 'linha') {
+        if (look === 'dia') {
+          // the day in one column (each meeting a block, the red line now) and, beside it, the next one and the call
+          const t0 = Math.min(now, ...evs.map((e) => e.start)), t1 = Math.max(now + 2 * 3600000, ...evs.map((e) => e.end));
+          const d0 = new Date(t0 - 3600000); d0.setMinutes(0, 0, 0); const a = d0.getTime(), b = Math.max(a + 8 * 3600000, Math.ceil((t1 + 1800000) / 3600000) * 3600000);
+          const y = (t) => Math.max(0, Math.min(100, (t - a) / (b - a) * 100)), hrs = [];
+          for (let t = a; t <= b; t += 3600000) hrs.push(t);
+          alt.dataset.a = a; alt.dataset.b = b;
+          const later = evs.filter((e) => cur && e.start > cur.start).slice(0, 4);
+          alt.innerHTML = `<div class="mt-d"><div class="mt-d-day"><div class="mt-d-in">${hrs.map((t) => `<span class="hr" style="top:${y(t)}%">${String(new Date(t).getHours()).padStart(2, '0')}h</span>`).join('')}
+              ${evs.map((e, k) => `<div class="blk${e.end <= now ? ' past' : ''}${k === ci ? ' next' : ''}" style="top:${y(e.start)}%;height:${Math.max(4, y(e.end) - y(e.start))}%"${e.meet && e.end > now && !call ? ` data-act="join:${k}"` : ''}><b>${esc(e.title)}</b><span>${hm(e.start)}</span></div>`).join('')}<i class="nowl"></i></div>${empty}</div>
+            <div class="mt-d-side"><div class="mt-d-next">${head}<div class="mt-a-cd"></div><div class="mt-a-row">${cur && cur.meet && !call ? `<button class="mt-a-join solid" data-act="join:${ci}">Entrar</button>` : ''}</div></div>
+              <div class="mt-d-later"><div class="mt-lbl">Depois</div>${later.length ? later.map((e) => `<div class="li"><span>${hm(e.start)}</span><b>${esc(e.title)}</b></div>`).join('') : '<div class="mt-sub">Nada depois desta.</div>'}</div>
+              ${CTL(call)}</div></div>`;
+        } else if (look === 'linha') {
           const w0 = win(cur, now), x = (t) => Math.max(0, Math.min(100, (t - w0) / H12 * 100));
           const hours = Array.from({ length: 6 }, (_, k) => w0 + k * 2 * 3600000);
           alt.innerHTML = `<div class="mt-lbl">Hoje · trabalho</div>
@@ -211,7 +248,9 @@ W.meetings = {
         }
       }
       alt.querySelectorAll('.mt-a-cd').forEach((el) => { el.textContent = cur ? clockTxt(left) : '—'; });
-      const nl = alt.querySelector('.nowl'); if (nl) nl.style.left = Math.max(0, Math.min(100, (now - win(cur, now)) / H12 * 100)) + '%';
+      const nl = alt.querySelector('.nowl');
+      if (nl && look === 'dia') nl.style.top = Math.max(0, Math.min(100, (now - +alt.dataset.a) / (+alt.dataset.b - +alt.dataset.a) * 100)) + '%';
+      else if (nl) nl.style.left = Math.max(0, Math.min(100, (now - win(cur, now)) / H12 * 100)) + '%';
       const cv = alt.querySelector('.mt-a-dial'); if (cv) drawDial(cv, evs, ci, now, win(cur, now));
     }
     function drawDial(cv, evs, ci, now, w0) {

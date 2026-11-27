@@ -1984,3 +1984,53 @@ body[data-ftheme="01"] .mc-said { background: rgba(6, 6, 8, .94); border: 1px so
 @keyframes fh-blink { 50% { opacity: .3; } }
 @keyframes fh-art { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 42, 79, 0); } 50% { box-shadow: 0 0 22px 1px rgba(255, 42, 79, .3); } }
 @media (prefers-reduced-motion: reduce) { .w-fhome, .w-fhome * { animation: none !important; } }
+
+/* Reuniões "Dia" (Fernando, 27/11): the day in one column, the next meeting and the call beside it */
+.mt-d { position: absolute; inset: 0; display: grid; grid-template-columns: 1.25fr 1fr; gap: clamp(10px, 2.4cqmin, 20px); padding: clamp(14px, 3cqmin, 26px); padding-top: clamp(40px, 7cqmin, 56px); }
+.mt-d-day { position: relative; border: 1px solid var(--line); border-radius: 16px; background: var(--card); overflow: hidden; }
+.mt-d-in { position: absolute; inset: 14px 14px 14px 58px; }
+.mt-d-in .hr { position: absolute; left: -46px; right: 0; transform: translateY(-50%); font: 400 11px ui-monospace, "Roboto Mono", monospace; color: var(--dim, #55555b); border-top: 1px solid rgba(255, 255, 255, .04); line-height: 0; }
+.mt-d-in .blk { position: absolute; left: 0; right: 0; border-left: 2px solid var(--accent, #ff2a4f); background: rgba(255, 42, 79, .12); border-radius: 8px; padding: 6px 10px; overflow: hidden; font-size: 13px; transition: transform .15s, background .2s; }
+.mt-d-in .blk b { display: block; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .mt-d-in .blk span { color: var(--muted); font: 11px ui-monospace, "Roboto Mono", monospace; }
+.mt-d-in .blk.past { border-left-color: var(--dim, #55555b); background: rgba(255, 255, 255, .03); color: var(--muted); } .mt-d-in .blk.next { background: rgba(255, 42, 79, .26); }
+.mt-d-in .blk[data-act]:active { transform: scale(.98); }
+.mt-d-in .nowl { position: absolute; left: -8px; right: 0; height: 0; border-top: 1.5px solid var(--accent, #ff2a4f); z-index: 2; pointer-events: none; }
+.mt-d-in .nowl::before { content: ''; position: absolute; left: -2px; top: -5px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent, #ff2a4f); animation: mt-now 2s ease-out infinite; }
+@keyframes mt-now { 0% { box-shadow: 0 0 0 0 rgba(255, 42, 79, .6); } 100% { box-shadow: 0 0 0 10px rgba(255, 42, 79, 0); } }
+.mt-d-side { display: flex; flex-direction: column; gap: clamp(10px, 2cqmin, 16px); min-height: 0; }
+.mt-d-next { border: 1px solid var(--line); border-radius: 16px; background: var(--card); padding: clamp(14px, 3cqmin, 24px); display: flex; flex-direction: column; gap: 6px; }
+.mt-d-later { flex: 1; min-height: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: var(--card); padding: clamp(12px, 2.6cqmin, 20px); }
+.mt-d-later .li { display: grid; grid-template-columns: 58px 1fr; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; font-weight: 300; }
+.mt-d-later .li span { color: var(--accent, #ff2a4f); font-family: ui-monospace, "Roboto Mono", monospace; } .mt-d-later .li b { font-weight: 300; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* after "Entrar": the question whether the Meet also comes to the tablet */
+.mt-ask { position: fixed; z-index: 460; left: 50%; bottom: 8vh; width: min(620px, 86vw); display: grid; gap: 10px; padding: 20px 24px; border-radius: 18px; border: 1px solid var(--line); background: rgba(8, 8, 10, .96); overflow: hidden;
+  transform: translate(-50%, 50px); filter: blur(10px); opacity: 0; transition: transform .6s cubic-bezier(.16, 1, .3, 1), filter .45s, opacity .35s; }
+.mt-ask.in { transform: translate(-50%, 0); filter: blur(0); opacity: 1; }
+.mt-ask b { font-size: 20px; font-weight: 300; } .mt-ask p { margin: 0; color: var(--muted); font-size: 14px; } .mt-ask .mt-a-row { margin-top: 4px; }
+.mt-ask::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--accent, #ff2a4f); transform-origin: left; }
+.mt-ask.in::after { transform: scaleX(0); transition: transform 10s linear .3s; }
+
+/* the meeting alerts in Tema 01's motion (approved 27/11): rise from a blur, a ring and a line that run out; at the start
+   time the screen's edges beat with the alarm while rings leave the countdown */
+.mt-ring { position: relative; } .mt-ring svg { position: absolute; inset: -2px; width: calc(100% + 4px); height: calc(100% + 4px); transform: rotate(-90deg); }
+.mt-ring svg circle { fill: none; stroke-width: 3; } .mt-ring svg .bg { stroke: rgba(255, 255, 255, .1); } .mt-ring svg .fg { stroke: var(--accent, #ff2a4f); stroke-linecap: round; transition: stroke-dashoffset 1s linear; }
+body[data-ftheme="01"] .mt-alert { animation: none; opacity: 0; transition: opacity .35s; } body[data-ftheme="01"] .mt-alert.in { opacity: 1; }
+body[data-ftheme="01"] .mt-ring { border-color: transparent; font-weight: 200; }
+body[data-ftheme="01"] .mt-abox { overflow: hidden; transform: translateY(40px) scale(.96); filter: blur(10px); opacity: 0; transition: transform .6s cubic-bezier(.16, 1, .3, 1), filter .45s, opacity .35s; }
+body[data-ftheme="01"] .mt-alert.in .mt-abox { transform: none; filter: blur(0); opacity: 1; }
+body[data-ftheme="01"] .mt-abox::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: #ff2a4f; transform-origin: left; transform: scaleX(var(--left, 1)); transition: transform 1s linear; }
+body[data-ftheme="01"] .mt-ahead > div > *, body[data-ftheme="01"] .mt-arow > * { opacity: 0; transform: translateY(8px); }
+body[data-ftheme="01"] .mt-alert.in .mt-ahead > div > *, body[data-ftheme="01"] .mt-alert.in .mt-arow > * { opacity: 1; transform: none; transition: opacity .4s .2s, transform .5s cubic-bezier(.16, 1, .3, 1) .2s; }
+body[data-ftheme="01"] .mt-alert.in .mt-arow > :nth-child(2) { transition-delay: .3s; } body[data-ftheme="01"] .mt-alert.in .mt-arow > :nth-child(3) { transition-delay: .36s; }
+body[data-ftheme="01"] .mt-alert.in .mt-abtn.go { animation: m01-offer-pulse 1.8s ease-out 1s infinite; }
+body[data-ftheme="01"] .mt-alert.loud::before { content: ''; position: absolute; inset: 0; pointer-events: none; animation: mt-edge 1.1s ease-in-out infinite; }
+body[data-ftheme="01"] .mt-alert.loud .mt-ring::before, body[data-ftheme="01"] .mt-alert.loud .mt-ring::after { content: ''; position: absolute; inset: 0; border-radius: 50%; border: 1px solid #ff2a4f; animation: mt-rip 1.6s ease-out infinite; }
+body[data-ftheme="01"] .mt-alert.loud .mt-ring::after { animation-delay: .8s; }
+body[data-ftheme="01"] .mt-alert.loud.in .mt-abox { animation: mt-nudge 3.2s ease-in-out .6s infinite; }
+@keyframes mt-edge { 50% { box-shadow: inset 0 0 90px 0 rgba(255, 42, 79, .35); } }
+@keyframes mt-rip { 0% { transform: scale(1); opacity: .7; } 100% { transform: scale(1.9); opacity: 0; } }
+@keyframes mt-nudge { 0%, 86%, 100% { transform: none; } 89% { transform: translateX(-4px); } 92% { transform: translateX(4px); } 95% { transform: translateX(-2px); } }
+@media (prefers-reduced-motion: reduce) { .mt-alert, .mt-alert *, .mt-alert::before, .mt-ask, .mt-d-in .nowl::before { animation: none !important; transition: none !important; } }
+
+body[data-ftheme="01"] .mt-d .mt-a-title { font-weight: 300; }
