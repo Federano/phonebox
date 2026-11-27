@@ -71,12 +71,42 @@ const ITEMS = [
   ['more', 'Ajustes', () => -1, () => openOverview()],
 ];
 const rail = h('nav', 'f-rail'); rail.setAttribute('aria-label', 'Navegação');
-for (const [ico, label, , go] of ITEMS) {
+const railBtn = (ico, label, go, svg = ICO[ico]) => {
   const b = h('button', 'f-rail-i'); b.dataset.k = ico; b.setAttribute('aria-label', label);
-  b.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICO[ico]}</svg><span>${label}</span>`;
+  b.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${svg}</svg><span></span>`;
+  b.querySelector('span').textContent = label;
   b.onclick = () => { haptic(); go(); };
-  rail.append(b);
+  return b;
+};
+const fixed = ITEMS.map(([ico, label, , go]) => railBtn(ico, label, go));
+// quick shortcuts: pages the user pins to the rail (kept on this tablet), between Temas and Ajustes
+const PIN = '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>';
+const pinBox = h('div', 'f-rail-pins');
+const addBtn = railBtn('add', 'Atalho', () => openPins(), '<path d="M12 5v14M5 12h14"/>');
+let pins = [];
+try { pins = JSON.parse(localStorage.getItem('federano.railPins') || '[]').filter((x) => typeof x === 'string'); } catch (_) {}
+const savePins = () => { try { localStorage.setItem('federano.railPins', JSON.stringify(pins)); } catch (_) {} drawPins(); };
+function drawPins() {
+  pinBox.replaceChildren(...pins.map((id) => pages.find((p) => p.id === id)).filter(Boolean)
+    .map((p) => { const b = railBtn('pin', p.title || p.id, () => gotoPageRef(p.id), PIN); b.dataset.page = p.id; return b; }));
 }
+function openPins() {
+  const list = h('div', 'th-list f-pin-list');
+  for (const p of pages) {
+    const on = pins.includes(p.id);
+    const row = h('button', 'f-pin' + (on ? ' on' : ''), h('b', null, p.title || p.id), h('span', null, on ? 'Na barra ✓' : 'Adicionar'));
+    row.onclick = () => { haptic(); pins = on ? pins.filter((x) => x !== p.id) : [...pins, p.id]; savePins(); box.remove(); openPins(); };
+    list.append(row);
+  }
+  const close = h('button', 'th-close', '×'); close.setAttribute('aria-label', 'Fechar');
+  const box = h('div', 'th-sheet', h('div', 'th-head', h('b', null, 'Atalhos da barra'), h('span', null, 'Toque numa página para colocar ou tirar da barra lateral.'), close), list);
+  box.id = 'railPins';
+  close.onclick = () => { haptic(); box.remove(); };
+  document.getElementById('railPins')?.remove();
+  document.body.append(box);
+}
+rail.append(...fixed.slice(0, 4), pinBox, addBtn, fixed[4]);
+setTimeout(drawPins, 1500);   // the pages arrive from the PC a moment after start
 document.body.append(rail);
 // a small tab on the rail's edge hides it (the pages take the whole width) and brings it back; kept on this tablet
 const railTog = h('button', 'f-rail-tog');
@@ -95,10 +125,12 @@ document.body.append(railTog);
 setInterval(() => {
   if (document.body.dataset.ftheme !== '01') return;
   ITEMS.forEach(([ico, , at], i) => {
-    const b = rail.children[i], n = at();
+    const b = fixed[i], n = at();
     b.hidden = ico === 'meet' && n < 0;
     b.classList.toggle('on', n >= 0 && n === curPage);
   });
+  for (const b of pinBox.children) b.classList.toggle('on', pages[curPage]?.id === b.dataset.page);
+  if (pinBox.children.length !== pins.filter((id) => pages.some((p) => p.id === id)).length) drawPins();
 }, 500);
 
 applyTheme();
