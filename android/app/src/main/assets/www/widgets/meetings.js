@@ -177,7 +177,9 @@ W.meetings = {
       accBtn.onclick = () => { haptic(); tabletCalendar.choose().then(showAcc, () => toast('Não deu para trocar a conta agora.', 'err')); };
       box.append(accBtn); showAcc();
     }
-    const setLook = (l) => { look = l; box.dataset.look = l; lookBtn.textContent = NAMES[l] + ' ▸'; try { localStorage.setItem('federano.meetLook2', l); } catch (_) {} altKey = ''; render(); };
+    // the account button sits on the same line, left of the look button (whose width changes with the look's name)
+    const placeAcc = () => { const a = box.querySelector('.mt-accbtn'); if (a) a.style.right = (lookBtn.offsetWidth + 20) + 'px'; };
+    const setLook = (l) => { look = l; box.dataset.look = l; lookBtn.textContent = NAMES[l] + ' ▸'; requestAnimationFrame(placeAcc); try { localStorage.setItem('federano.meetLook2', l); } catch (_) {} altKey = ''; render(); };
     lookBtn.onclick = () => { haptic(); setLook(LOOKS[(LOOKS.indexOf(look) + 1) % LOOKS.length]); };
     let altKey = '';
     alt.addEventListener('click', (e) => {
@@ -301,7 +303,7 @@ W.meetings = {
     let alive = true;
     const visible = () => pages[curPage] === page;
     const loop = async () => { if (!alive) return; if (visible()) { await load(!!(data && data.call)); render(); } setTimeout(loop, data && data.call ? 2000 : 10000); };
-    box.dataset.look = look; lookBtn.textContent = NAMES[look] + ' ▸';
+    box.dataset.look = look; lookBtn.textContent = NAMES[look] + ' ▸'; requestAnimationFrame(placeAcc);
     load(true).then(render); loop();
     return { update() { render(); }, destroy() { alive = false; } };
   },

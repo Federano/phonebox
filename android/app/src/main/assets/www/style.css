@@ -1836,7 +1836,7 @@ body[data-ftheme="01"] .offer-count { font-weight: 400; }
 .w.ly.ly-podcast .ly-pdesc { max-height: none; -webkit-mask-image: none; mask-image: none; }
 body[data-ftheme="01"] .ly-pic { background: transparent; }
 body[data-ftheme="01"] .ly-pic::after { display: none; }
-.mt-accbtn { top: 46px; text-transform: none; }
+.mt-accbtn { top: 10px; text-transform: none; }
 
 /* Tema 01 (Modelo A): the side rail of icons on the left edge; the pages move right to make room */
 .f-rail { display: none; }
