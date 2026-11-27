@@ -1949,7 +1949,7 @@ body[data-ftheme="01"] .mirror .mc-seek::-webkit-slider-thumb, body[data-ftheme=
 body[data-ftheme="01"] .mc-said { background: rgba(6, 6, 8, .94); border: 1px solid #1c1c1f; }
 
 /* Federano "Home" (Início): one widget for the whole start page, drawn in Tema 01's look in every theme */
-.w-fhome { --fr: #ff2a4f; --fl: #1c1c1f; --fc: #08080a; --fm: #8a8a90; --fd: #55555b; display: grid; grid-template-rows: auto 1.25fr auto 1fr; gap: 1.2cqw; padding: .6cqw 1cqw; color: #f4f4f6; }
+.w-fhome { --fr: #ff2a4f; --fl: #1c1c1f; --fc: #08080a; --fm: #8a8a90; --fd: #55555b; display: grid; grid-template-rows: auto 1.2fr 1fr; gap: 1.4cqw; padding: .6cqw 1cqw; color: #f4f4f6; }
 .w-fhome .fh-lbl { font: 400 max(10px, 1cqw) ui-monospace, "Roboto Mono", monospace; letter-spacing: .2em; color: var(--fm); text-transform: uppercase; }
 .w-fhome .fh-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 2cqw; }
 .w-fhome .fh-time { font-weight: 200; font-size: 6.4cqw; line-height: 1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
@@ -1960,12 +1960,12 @@ body[data-ftheme="01"] .mc-said { background: rgba(6, 6, 8, .94); border: 1px so
 .w-fhome .fh-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fr); animation: fh-blink 2s ease-in-out infinite; } .w-fhome .fh-dot.off { background: var(--fd); animation: none; }
 .w-fhome .fh-row { display: grid; grid-template-columns: 1.3fr 1fr; gap: 1.4cqw; min-height: 0; }
 .w-fhome .fh-card { background: var(--fc); border: 1px solid var(--fl); border-radius: 1.4cqw; padding: 1.5cqw 1.7cqw; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 1cqw; overflow: hidden; color: inherit; text-align: left; font: inherit; }
-.w-fhome .fh-npr { display: grid; grid-template-columns: 7cqw 1fr; gap: 1.6cqw; align-items: center; min-height: 0; }
+.w-fhome .fh-npr { display: grid; grid-template-columns: 13cqw 1fr; gap: 2cqw; align-items: center; min-height: 0; }
 .w-fhome .fh-artw { aspect-ratio: 1; border-radius: 1cqw; border: 1px solid var(--fl); overflow: hidden; background: radial-gradient(circle at 45% 45%, #5a1020, #160407 70%); }
 .w-fhome.fh-playing .fh-artw { animation: fh-art 3.2s ease-in-out infinite; }
 .w-fhome .fh-art { width: 100%; height: 100%; object-fit: cover; display: block; } .w-fhome .fh-art:not([src]) { visibility: hidden; }
-.w-fhome .fh-song { min-width: 0; } .w-fhome .fh-song b { display: block; font-size: 1.9cqw; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.w-fhome .fh-song span { color: var(--fm); font-size: 1.3cqw; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.w-fhome .fh-song { min-width: 0; } .w-fhome .fh-song b { display: block; font-size: 2.6cqw; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.w-fhome .fh-song span { color: var(--fm); font-size: 1.6cqw; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .w-fhome .fh-prog { height: 2px; background: #26262a; border-radius: 1px; overflow: hidden; margin-top: auto; } .w-fhome .fh-prog i { display: block; height: 100%; background: var(--fr); width: 0; }
 .w-fhome .fh-times { display: flex; justify-content: space-between; color: var(--fm); font: max(10px, 1.05cqw) ui-monospace, "Roboto Mono", monospace; margin-top: -.4cqw; }
 .w-fhome .fh-mlist { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
@@ -1975,10 +1975,6 @@ body[data-ftheme="01"] .mc-said { background: rgba(6, 6, 8, .94); border: 1px so
 .w-fhome .fh-empty { color: var(--fm); font-size: 1.3cqw; padding: .6cqw 0; }
 .w-fhome .fh-btn { border: 1px solid var(--fr); background: transparent; color: #f4f4f6; border-radius: 999px; padding: .5cqw 1.3cqw; font-size: max(12px, 1.15cqw); transition: transform .15s, background .2s; }
 .w-fhome .fh-btn:active { transform: scale(.94); background: rgba(255, 42, 79, .15); }
-.w-fhome .fh-pages { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1.2cqw; }
-.w-fhome .fh-pg { border: 1px solid var(--fl); background: var(--fc); color: #f4f4f6; border-radius: 1.2cqw; padding: 1.3cqw 0; font-size: max(13px, 1.45cqw); font-weight: 300; position: relative; overflow: hidden; transition: transform .15s, border-color .2s; }
-.w-fhome .fh-pg::after { content: ""; position: absolute; left: 18%; right: 18%; bottom: 0; height: 2px; background: var(--fr); transform: scaleX(0); transition: transform .35s cubic-bezier(.16, 1, .3, 1); }
-.w-fhome .fh-pg:active { transform: scale(.95); border-color: var(--fr); } .w-fhome .fh-pg.cur { border-color: var(--fr); color: var(--fr); } .w-fhome .fh-pg.cur::after { transform: scaleX(1); }
 .w-fhome .fh-sys { display: grid; grid-template-columns: repeat(4, 1fr) 1.2fr; gap: 1.2cqw; min-height: 0; }
 .w-fhome .fh-st { padding: 1.2cqw 1.4cqw; display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: .2cqw; }
 .w-fhome .fh-num { font-size: 2.6cqw; font-weight: 300; font-variant-numeric: tabular-nums; line-height: 1.1; } .w-fhome .fh-num small { font-size: .5em; color: var(--fm); margin-left: .2em; }

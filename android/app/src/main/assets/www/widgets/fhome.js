@@ -1,10 +1,10 @@
-import { API, D, LOCALE, METRICS, cfg, chart, curPage, fmtTime, gotoPageRef, h, haptic, hist, media, metricText, online, openNowPlaying, pages, wxDeg, wxText } from '../main.js';
+import { API, D, LOCALE, METRICS, cfg, chart, fmtTime, h, haptic, hist, media, metricText, online, openNowPlaying, wxDeg, wxText } from '../main.js';
 import { W } from '../registry.js';
 import { joinMeeting, meetingsToday } from './meetings.js';
 
 // ---------------------------------------------------------------- Federano "Home" (Início)
 // One widget for the whole start page, in Tema 01's look: the time, the PC's state, what is playing, today's meetings,
-// buttons to the pages and, at the bottom, CPU, RAM, GPU and network with their recent history plus the weather.
+// and, at the bottom, CPU, RAM, GPU and network with their recent history plus the weather.
 const two = (n) => String(n).padStart(2, '0');
 const SYS = ['cpu', 'ram', 'gpu', 'net'];
 
@@ -24,8 +24,6 @@ W.fhome = {
     // today's meetings
     const mlist = h('div', 'fh-mlist');
     const meet = h('div', 'fh-card fh-meet', h('div', 'fh-lbl', 'Reuniões de hoje'), mlist);
-    // page buttons
-    const nav = h('div', 'fh-pages');
     // the PC and the weather
     const cards = SYS.map((k) => {
       const m = METRICS[k], val = h('div', 'fh-num'), cv = h('canvas');
@@ -33,19 +31,10 @@ W.fhome = {
     });
     const wxCity = h('div', 'fh-lbl'), wxNow = h('div', 'fh-wxnow'), wxSub = h('div', 'fh-sub'), wxDays = h('div', 'fh-days');
     const wx = h('div', 'fh-card fh-wx', wxCity, wxNow, wxSub, wxDays);
-    box.append(head, h('div', 'fh-row', np, meet), nav, h('div', 'fh-sys', ...cards.map((c) => c.el), wx));
+    // (no page buttons here: the side rail already goes to every page)
+    box.append(head, h('div', 'fh-row', np, meet), h('div', 'fh-sys', ...cards.map((c) => c.el), wx));
 
-    let navKey = '', meetAt = 0, artId = -1;
-    function drawNav() {
-      const list = pages.slice(0, 5), key = list.map((p) => p.id).join('|') + '#' + curPage;
-      if (key === navKey) return;
-      navKey = key;
-      nav.replaceChildren(...list.map((p, i) => {
-        const b = h('button', 'fh-pg' + (i === curPage ? ' cur' : ''), p.title || p.id);
-        b.onclick = () => { haptic(); gotoPageRef(p.id); };
-        return b;
-      }));
-    }
+    let meetAt = 0, artId = -1;
     async function drawMeet() {
       if (Date.now() - meetAt < 30000) return;
       meetAt = Date.now();
@@ -77,7 +66,7 @@ W.fhome = {
           date.textContent = d.toLocaleDateString(LOCALE, { weekday: 'long', day: 'numeric', month: 'long' });
           time.replaceChildren(two(d.getHours()), h('span', 'fh-colon', ':'), two(d.getMinutes()));
           pc.replaceChildren(h('i', 'fh-dot' + (online === false ? ' off' : '')), online === false ? 'PC desligado' : 'PC online');
-          drawNav(); drawMeet(); drawMedia();
+          drawMeet(); drawMedia();
         }
         if (kind === 'state' && D.state) {
           const s = D.state;
