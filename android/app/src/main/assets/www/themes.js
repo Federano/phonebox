@@ -81,6 +81,19 @@ const railBtn = (ico, label, go, svg = ICO[ico]) => {
 const fixed = ITEMS.map(([ico, label, , go]) => railBtn(ico, label, go));
 // quick shortcuts: pages the user pins to the rail (kept on this tablet), between Temas and Ajustes
 const PIN = '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>';
+// ready-made icons for the most used pages, chosen by what the page holds (its first widget that has one)
+const PAGE_ICO = {
+  clock: ICO.home, analog: ICO.home, media: ICO.music, lyrics: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>',
+  meetings: ICO.meet, agenda: ICO.meet, calendar: ICO.meet,
+  stat: '<path d="M3 12h4l2-6 4 12 2-6h6"/>', chart: '<path d="M3 12h4l2-6 4 12 2-6h6"/>', meters: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>', gauge: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  processes: '<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
+  shortcuts: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>', button: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>', command: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
+  quotas: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>',
+  sessions: '<circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7M18 10.5c0 4-6 3-10 6"/>', github: '<circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7M18 10.5c0 4-6 3-10 6"/>',
+  federano: '<path d="M4 5h16v11H9l-5 4z"/>', forecast: '<path d="M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 9a4.5 4.5 0 0 0 1 9z"/>', weather: '<path d="M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 9a4.5 4.5 0 0 0 1 9z"/>',
+  photos: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 8"/>', camera: '<rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/>',
+};
+const pageIcon = (p) => (p.widgets || []).map((w) => PAGE_ICO[w.type]).find(Boolean) || PIN;
 const pinBox = h('div', 'f-rail-pins');
 const addBtn = railBtn('add', 'Atalho', () => openPins(), '<path d="M12 5v14M5 12h14"/>');
 let pins = [];
@@ -88,13 +101,14 @@ try { pins = JSON.parse(localStorage.getItem('federano.railPins') || '[]').filte
 const savePins = () => { try { localStorage.setItem('federano.railPins', JSON.stringify(pins)); } catch (_) {} drawPins(); };
 function drawPins() {
   pinBox.replaceChildren(...pins.map((id) => pages.find((p) => p.id === id)).filter(Boolean)
-    .map((p) => { const b = railBtn('pin', p.title || p.id, () => gotoPageRef(p.id), PIN); b.dataset.page = p.id; return b; }));
+    .map((p) => { const b = railBtn('pin', p.title || p.id, () => gotoPageRef(p.id), pageIcon(p)); b.dataset.page = p.id; return b; }));
 }
 function openPins() {
   const list = h('div', 'th-list f-pin-list');
   for (const p of pages) {
     const on = pins.includes(p.id);
-    const row = h('button', 'f-pin' + (on ? ' on' : ''), h('b', null, p.title || p.id), h('span', null, on ? 'Na barra ✓' : 'Adicionar'));
+    const ic = h('i', 'f-pin-ic'); ic.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${pageIcon(p)}</svg>`;
+    const row = h('button', 'f-pin' + (on ? ' on' : ''), ic, h('b', null, p.title || p.id), h('span', null, on ? 'Na barra ✓' : 'Adicionar'));
     row.onclick = () => { haptic(); pins = on ? pins.filter((x) => x !== p.id) : [...pins, p.id]; savePins(); box.remove(); openPins(); };
     list.append(row);
   }
