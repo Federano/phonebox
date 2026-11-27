@@ -1,10 +1,13 @@
 package net.oxog.phonebox.deskpanel
 
 import android.Manifest
+import android.accounts.Account
+import android.accounts.AccountManager
+import android.annotation.SuppressLint
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.ContentUris
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.database.ContentObserver
 import android.database.Cursor
@@ -33,6 +36,7 @@ class TabletCalendar(
 ) {
     companion object {
         const val PERMISSION_REQUEST = 7354
+        const val ACCOUNT_REQUEST = 7355
         private const val GOOGLE = "com.google"
         private const val PREFS = "federano_tablet_calendar"
         private const val MAX_INSTANCES = 3000
@@ -56,7 +60,7 @@ class TabletCalendar(
     private var active = false
     private var observing = false
     private var pending: Pending? = null
-    private var picker: AlertDialog? = null
+    private var pickerRequest: Pending? = null
     private val notifyChanged = Runnable { if (active && !closed) changed() }
     private val observer = object : ContentObserver(main) {
         override fun onChange(selfChange: Boolean) {
@@ -86,8 +90,7 @@ class TabletCalendar(
     fun close() {
         closed = true
         stop()
-        picker?.dismiss()
-        picker = null
+        pickerRequest = null
         pending = null
         worker.shutdownNow()
     }
@@ -102,9 +105,7 @@ class TabletCalendar(
             "refresh" -> read(id) { refresh() }
             "connect", "choose" -> main.post { connect(Pending(id, operation == "choose")) }
             "disconnect" -> main.post {
-                // Cancel a chooser first: its callback must not reconnect an account after disconnect.
-                picker?.dismiss()
-                picker = null
+                // A chooser already on screen may return later; it must not reconnect after disconnect.
                 pending?.let { reply(it.id, failure("Seleção de agenda cancelada.", "cancelled")) }
                 pending = null
                 prefs.edit().remove("account_name").remove("account_type").apply()
@@ -153,7 +154,7 @@ class TabletCalendar(
 
     private fun connect(request: Pending) {
         if (closed || activity.isFinishing || activity.isDestroyed) return
-        if (pending != null) {
+        if (pending != null || pickerRequest != null) {
             reply(request.id, failure("Já existe uma escolha de agenda aberta.", "busy"))
             return
         }
@@ -165,58 +166,65 @@ class TabletCalendar(
     }
 
     private fun select(request: Pending) {
-        execute {
-            try {
-                val calendars = calendars()
-                val accounts = calendars.map { it.account }.distinct().sortedBy { it.name.lowercase(Locale.ROOT) }
-                val selected = chosen()
-                main.post {
-                    if (closed || pending != request || activity.isFinishing || activity.isDestroyed) return@post
-                    // Persisted choice survives app restarts. Never silently use the first/only Android account.
-                    if (!request.forceChoice && selected != null && selected in accounts) {
-                        pending = null
-                        read(request.id) { state() }
-                    } else if (accounts.isEmpty()) {
-                        pending = null
-                        read(request.id) { state().put("error", "Nenhuma agenda Google foi encontrada. Abra o Google Agenda, ative a sincronização da conta e tente novamente.")
-                            .put("code", "no_accounts") }
-                    } else {
-                        val labels = accounts.map { account ->
-                            val count = calendars.count { it.account == account && it.enabled }
-                            "${account.name}\n${if (count == 0) "Sem agendas visíveis e sincronizadas" else "$count agenda${if (count == 1) "" else "s"} sincronizada${if (count == 1) "" else "s"}"}"
-                        }.toTypedArray()
-                        picker = AlertDialog.Builder(activity)
-                            .setTitle("Qual conta usar na agenda?")
-                            .setSingleChoiceItems(labels, accounts.indexOf(selected)) { dialog, which ->
-                                if (pending != request || which !in accounts.indices) return@setSingleChoiceItems
-                                val account = accounts[which]
-                                prefs.edit().putString("account_name", account.name).putString("account_type", account.type).apply()
-                                selectionVersion++
-                                pending = null
-                                dialog.dismiss()
-                                picker = null
-                                changed()
-                                read(request.id) { state() }
-                            }
-                            .setNegativeButton("Cancelar") { _, _ -> cancel(request) }
-                            .setOnCancelListener { cancel(request) }
-                            .create()
-                        picker?.show()
-                        picker?.getButton(AlertDialog.BUTTON_NEGATIVE)?.isAllCaps = false
-                    }
-                }
-            } catch (_: SecurityException) {
-                main.post { pending = null; reply(request.id, failure("O acesso à agenda foi revogado.", "permission_denied")); changed() }
-            } catch (_: Exception) {
-                main.post { pending = null; reply(request.id, failure("Não foi possível listar as agendas do Android.", "provider_error")) }
-            }
+        if (closed || pending != request || activity.isFinishing || activity.isDestroyed) return
+        val selected = chosen()
+        if (!request.forceChoice && selected != null && deviceHas(selected)) {
+            pending = null
+            read(request.id) { state() }
+            return
         }
+        try {
+            // Android lists device accounts before calendars synchronize and offers "Add account" itself.
+            // The user's choice also grants account visibility; no broad GET_ACCOUNTS permission is needed.
+            val account = selected?.let { Account(it.name, it.type) }
+            @Suppress("DEPRECATION")
+            val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+                AccountManager.newChooseAccountIntent(account, null, arrayOf(GOOGLE), "Escolha a conta da sua agenda", null, null, null)
+            else AccountManager.newChooseAccountIntent(account, null, arrayOf(GOOGLE), true, "Escolha a conta da sua agenda", null, null, null)
+            pickerRequest = request
+            @Suppress("DEPRECATION")
+            activity.startActivityForResult(intent, ACCOUNT_REQUEST)
+        } catch (_: Exception) {
+            pickerRequest = null
+            pending = null
+            reply(request.id, failure("Não foi possível abrir as contas do Android. Confira as contas nas configurações do tablet.", "account_picker_unavailable"))
+        }
+    }
+
+    @SuppressLint("MissingPermission") // Android 8+: only accounts made visible by the system chooser are returned.
+    private fun deviceHas(selection: Selection): Boolean = try {
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            AccountManager.get(activity).getAccountsByType(GOOGLE).any { it.name == selection.name && it.type == selection.type }
+    } catch (_: SecurityException) { false }
+
+    fun onAccountResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean {
+        if (requestCode != ACCOUNT_REQUEST) return false
+        val request = pickerRequest
+        pickerRequest = null
+        if (closed || request == null || pending != request) return true
+        if (resultCode != Activity.RESULT_OK) {
+            cancel(request)
+            return true
+        }
+        val name = data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)?.trim().orEmpty()
+        val type = data?.getStringExtra(AccountManager.KEY_ACCOUNT_TYPE).orEmpty()
+        if (name.isBlank() || type != GOOGLE) {
+            pending = null
+            reply(request.id, failure("O Android não retornou uma conta Google válida. Escolha a conta novamente.", "invalid_account"))
+            return true
+        }
+        // Only an Android activity result can select an account; names supplied by the panel are never accepted.
+        prefs.edit().putString("account_name", name).putString("account_type", type).apply()
+        selectionVersion++
+        pending = null
+        changed()
+        read(request.id) { state() }
+        return true
     }
 
     private fun cancel(request: Pending) {
         if (pending != request) return
         pending = null
-        picker = null
         read(request.id) { state().put("cancelled", true) }
     }
 
@@ -251,7 +259,8 @@ class TabletCalendar(
             .also {
                 when {
                     selected != null && !granted -> it.put("error", "O acesso à agenda foi revogado. Toque em Conectar agenda para permitir novamente.").put("code", "permission_denied")
-                    selected != null && own.isEmpty() -> it.put("error", "A conta escolhida não está mais disponível no tablet. Escolha outra conta.").put("code", "account_removed")
+                    selected != null && own.isEmpty() && deviceHas(selected) -> it.put("error", "Conta selecionada. O Android ainda não disponibilizou a agenda: confira a sincronização e o compartilhamento com outros apps no Google Agenda.").put("code", "sync_pending")
+                    selected != null && own.isEmpty() -> it.put("error", "A conta escolhida não está mais disponível para o Federano. Escolha a conta novamente.").put("code", "account_removed")
                     selected != null && !connected -> it.put("error", "Ative a sincronização e a visibilidade de pelo menos uma agenda desta conta no Google Agenda.").put("code", "sync_disabled")
                 }
             }

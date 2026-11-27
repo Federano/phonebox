@@ -177,6 +177,31 @@ test('only explicit actions ask permission or open account selection', async (t)
   assert.equal((await client.disconnect()).configured, false);
 });
 
+test('a device account remains selected while Android has not exposed its calendars yet', async (t) => {
+  const { client, identify, calls, handlers } = make(t);
+  const waiting = { ...connected('device-account'), connected: false, code: 'sync_pending',
+    error: 'Conta selecionada. O Android ainda não disponibilizou a agenda.' };
+  identify(waiting);
+  handlers.set('choose', () => waiting);
+  assert.equal((await client.choose()).account, waiting.account);
+  const data = await client.today();
+  assert.equal(data.account, waiting.account);
+  assert.equal(data.error, waiting.error);
+  assert.equal(data.needsAuthorization, false);
+  assert.deepEqual(data.events, []);
+  assert.equal(calls.some((c) => c.operation === 'today'), false);
+  identify(connected('device-account'));
+  assert.equal((await client.today()).today.length, 1);
+});
+
+test('canceling the Android account chooser preserves the preceding account', async (t) => {
+  const { client, handlers } = make(t);
+  await client.state();
+  handlers.set('choose', () => ({ ...connected(), cancelled: true }));
+  assert.equal((await client.choose()).connectionId, 'account-a');
+  assert.equal((await client.today()).account, 'account-a@example.test');
+});
+
 test('an overnight stale result derives today from the fourteen-day memory snapshot', async (t) => {
   const { client, handlers, packet, time } = make(t);
   const tomorrow = appointment('tomorrow', CURRENT + 86400000);

@@ -101,3 +101,18 @@ test('o botão da conta mostra a conta escolhida e troca por outra num toque', a
   expect(await page.evaluate(() => window.__calendarCalls)).toContain('choose');
   if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + '/agenda-conta.png' });
 });
+
+test('uma conta do dispositivo sem agendas sincronizadas continua identificada e pode ser trocada', async ({ page }) => {
+  const meetings = await setup(page);
+  await expect(meetings).toContainText('Compromisso da conta escolhida');
+  await page.evaluate(() => {
+    Object.assign(window.__calendarState, { connected: false, code: 'sync_pending',
+      error: 'Conta selecionada. O Android ainda não disponibilizou a agenda.' });
+    window.onFederanoCalendarChanged();
+  });
+  await expect(meetings.locator('.mt-accbtn')).toHaveText('pessoal ⇄');
+  await expect(meetings).toContainText('O Android ainda não disponibilizou a agenda');
+  await expect(meetings).not.toContainText('Compromisso da conta escolhida');
+  await meetings.locator('.mt-accbtn').click();
+  expect(await page.evaluate(() => window.__calendarCalls)).toContain('choose');
+});

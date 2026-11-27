@@ -124,3 +124,95 @@ test('"Só ouvir" shows the song\'s lyrics like Spotify, the YouTube picture, an
   await expect(page.locator('#toast')).toContainText('teste');
   expect(errors).toEqual([]);
 });
+
+async function videoFixture(page, options = {}) {
+  await page.goto('/panel/');
+  await page.evaluate((options) => {
+    localStorage.clear(); localStorage.setItem('federano.listenVideo', '1');
+    const pages = [{ id: 'letra', title: 'Letra', enabled: true, widgets: [{ id: 'ly', type: 'lyrics', x: 0, y: 0, w: 12, h: 6, options: {} }] }];
+    if (options.presence) pages.unshift({ id: 'home', title: 'Início', enabled: true, widgets: [{ id: 'clock', type: 'clock', x: 0, y: 0, w: 12, h: 6, options: {} }] });
+    localStorage.setItem('pb-demo-config', JSON.stringify({ night: { enabled: false }, shortcuts: [],
+      display: { touchGraceSec: 0, minDwellSec: 0, switchCountdownSec: 0, idleReturnSec: options.presence ? 3 : 0, idleDimMin: options.presence ? 1 : 0, homePage: 'home' }, pages }));
+  }, options);
+  await page.reload();
+  await page.evaluate((options) => {
+    window.__videoCalls = []; window.__videoAvailable = !options.missing;
+    window.__videoReply = {
+      playing: true, key: 'video|Chrome|Supercombo - Música de teste', kind: 'video',
+      clockSource: options.clockSource || 'system', pending: false, posOffsetMs: 0,
+      media: { app: 'Chrome', title: 'Supercombo - Música de teste', artist: 'Supercombo', album: '',
+        playing: !options.paused, posMs: 5000, durMs: 235000, artId: 0, canSeek: true, ageMs: options.ageMs || 0 },
+    };
+    const real = window.fetch;
+    window.fetch = (url, init) => {
+      if (options.presence && String(url).includes('/api/state')) return real(url, init).then(async (response) =>
+        new Response(JSON.stringify({ ...await response.json(), media: window.__videoReply.media }), { headers: { 'Content-Type': 'application/json' } }));
+      if (!String(url).includes('/lyrics/now')) return real(url, init);
+      window.__videoCalls.push(String(url));
+      const lyrics = window.__videoAvailable
+        ? { found: true, instrumental: false, plain: '', lines: [{ t: 0, text: 'Linha fictícia atual' }, { t: 60000, text: 'Linha fictícia posterior' }] }
+        : { found: false, instrumental: false, plain: '', lines: [] };
+      return Promise.resolve(new Response(JSON.stringify({ ...window.__videoReply, lyrics }), { headers: { 'Content-Type': 'application/json' } }));
+    };
+    window.dispatchEvent(new Event('federano-listen'));
+  }, options);
+  return page.locator('.w.ly');
+}
+
+test('a failed video lookup asks again and enables lyrics when the agent recovers', async ({ page }) => {
+  const ly = await videoFixture(page, { missing: true });
+  await expect(ly.getByRole('button', { name: 'Sem letra' })).toBeDisabled();
+  await page.evaluate(() => { window.__videoAvailable = true; });
+  await expect(ly.locator('.ly-line.on')).toHaveText('Linha fictícia atual');
+  await expect(ly.getByRole('button', { name: 'Detalhes' })).toBeEnabled();
+  const calls = await page.evaluate(() => window.__videoCalls);
+  expect(calls.length).toBeGreaterThan(1);
+  expect(new URL(calls.at(-1), 'https://test.local').searchParams.get('have')).toBe('');
+});
+
+test('the shared Windows media clock cannot overwrite the YouTube extension position', async ({ page }) => {
+  const ly = await videoFixture(page, { clockSource: 'youtube' });
+  await expect(ly.locator('.ly-line.on')).toHaveText('Linha fictícia atual');
+  await page.evaluate(async () => {
+    const { setMediaState } = await import('/panel/main.js');
+    setMediaState({ ...window.__videoReply.media, posMs: 90000, ageMs: 0 });
+  });
+  await page.waitForTimeout(700);
+  await expect(ly.locator('.ly-line.on')).toHaveText('Linha fictícia atual');
+  await expect(ly.locator('.ly-times')).not.toContainText('1:30');
+});
+
+test('a paused video does not add the age of its last sample to the lyrics position', async ({ page }) => {
+  const ly = await videoFixture(page, { paused: true, ageMs: 90000 });
+  await expect(ly.locator('.ly-line.on')).toHaveText('Linha fictícia atual');
+  await expect(ly.locator('.ly-times')).toContainText('0:05');
+});
+
+test('reading YouTube lyrics prevents absence return and dimming, survives a clip gap, and releases after playback stops', async ({ page }) => {
+  const ly = await videoFixture(page, { presence: true });
+  await expect(ly.locator('.ly-line.on')).toHaveText('Linha fictícia atual');
+  await page.evaluate(async () => {
+    const main = await import('/panel/main.js');
+    const realNow = Date.now.bind(Date); window.__absenceOffset = 0;
+    Date.now = () => realNow() + window.__absenceOffset;
+    // A preceding Spotify session must not mask the test with its own one-minute grace.
+    main.setMediaState({ ...window.__videoReply.media, app: 'Spotify' });
+    main.goPage(1, true);
+    window.__absenceOffset = 65000;
+    main.setMediaState(window.__videoReply.media);
+  });
+  await page.waitForTimeout(4500);
+  await expect.poll(() => page.evaluate(async () => (await import('/panel/main.js')).curPage)).toBe(1);
+  await expect(page.locator('body')).not.toHaveClass(/dimmed/);
+  await page.evaluate(async () => {
+    window.__absenceOffset += 10000; window.__videoReply.media.playing = false;
+    (await import('/panel/main.js')).setMediaState(window.__videoReply.media);
+  });
+  await page.waitForTimeout(1300);
+  await expect.poll(() => page.evaluate(async () => (await import('/panel/main.js')).curPage)).toBe(1);
+  await page.evaluate(async () => {
+    window.__absenceOffset += 61000;
+    (await import('/panel/main.js')).setMediaState(window.__videoReply.media);
+  });
+  await expect.poll(() => page.evaluate(async () => (await import('/panel/main.js')).curPage)).toBe(0);
+});

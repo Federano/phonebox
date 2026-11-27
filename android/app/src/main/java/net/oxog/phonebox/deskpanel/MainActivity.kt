@@ -267,6 +267,12 @@ class MainActivity : Activity(), SensorEventListener {
             dictation.onPermission(grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED)
     }
 
+    @Deprecated("Activity result compatibility for the Android account chooser")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        tabletCalendar.onAccountResult(requestCode, resultCode, data)
+    }
+
     override fun onPause() {
         resumed = false
         dictation.cancel(0) // the microphone is never left open behind another app or a dark screen

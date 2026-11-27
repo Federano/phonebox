@@ -369,8 +369,8 @@ W.lyrics = {
     if (reducedMotion.addEventListener) reducedMotion.addEventListener('change', syncCinema);
     else reducedMotion.addListener(syncCinema);
     // offset: how far Windows' position runs behind the player's own clock (the agent measures it for Spotify)
-    let offset = 0;
-    const pos = () => !m ? 0 : Math.min(m.durMs || Infinity, m.posMs + (m.ageMs || 0) + (m.playing ? performance.now() - at + offset : 0));
+    let offset = 0, clockSource = 'system';
+    const pos = () => !m ? 0 : Math.min(m.durMs || Infinity, m.posMs + (m.playing ? (m.ageMs || 0) + performance.now() - at + offset : 0));
 
     // ---- controls: the PC's player through the media API (same as the media widget and the mirror)
     let holdUntil = 0;
@@ -604,7 +604,9 @@ W.lyrics = {
       if (visible() || !key) {
         try {
           const listen = (() => { try { return localStorage.getItem('federano.listenVideo') === '1'; } catch (_) { return false; } })();
-          const r = await fetch(`${API}/lyrics/now?have=${encodeURIComponent(key)}${listen ? '&any=true' : ''}`, { cache: 'no-store', headers: PANEL_HEADERS });
+          // A failed video lookup must be checked again after the agent's retry cache expires.
+          const have = listen && !vidWords?.found ? '' : key;
+          const r = await fetch(`${API}/lyrics/now?have=${encodeURIComponent(have)}${listen ? '&any=true' : ''}`, { cache: 'no-store', headers: PANEL_HEADERS });
           const j = await r.json();
           // "Só ouvir" ends when Spotify takes over or nothing has played for a minute (the gap between two clips of a
           // YouTube playlist does not end it, so the next clip is not offered again)
@@ -618,6 +620,7 @@ W.lyrics = {
           } else {
             box.classList.remove('ly-idle');
             m = j.media; at = performance.now();
+            clockSource = j.clockSource || 'system';
             offset = Number(j.posOffsetMs) || 0;
             lastArtistPending = !!j.artistPending;
             if (title.textContent !== m.title) { const meta = title.parentElement; meta.classList.remove('ly-swap'); void meta.offsetWidth; meta.classList.add('ly-swap'); }
@@ -628,7 +631,10 @@ W.lyrics = {
             showPlay();
             if (j.kind === 'video') {
               if (j.key !== vidKey) { vidKey = j.key; vidWords = null; }
-              if (j.lyrics) vidWords = j.lyrics;
+              if (j.lyrics) {
+                if (!vidWords?.found && j.lyrics.found) key = ''; // A retry can bring words for the same video.
+                vidWords = j.lyrics;
+              }
               const has = !!(vidWords?.found && !vidWords.instrumental && (vidWords.lines?.length || vidWords.plain));
               lyrBtn.textContent = has ? (vidView === 'lyrics' ? 'Detalhes' : 'Letra') : (j.pending ? 'Letra…' : 'Sem letra');
               lyrBtn.disabled = !has;
@@ -687,6 +693,8 @@ W.lyrics = {
         if ((s.title !== m.title || s.app !== m.app) && !pollNow.pending) { pollNow.pending = true; clearTimeout(timer); poll().finally(() => { pollNow.pending = false; }); }
       }
       if (s.title !== m.title || s.app !== m.app) return;
+      // The global media feed uses Windows' clock. It must not overwrite the YouTube extension's newer position.
+      if (clockSource === 'youtube') return;
       if (Date.now() < holdUntil) return;   // a control just used: its own answer is newer
       const p = s.posMs + (s.playing ? performance.now() - s.at : 0);
       if (s.playing !== m.playing || Math.abs(p + (s.playing ? offset : 0) - pos()) > 300) {

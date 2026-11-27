@@ -972,14 +972,14 @@ app.MapGet("/api/lyrics/now", async (string? have, bool? any, MediaMonitor media
     // Federano "Só ouvir" (the video pop-up's third answer): a video on the PC shown as sound only, like a podcast
     if (any == true && m is { Title.Length: > 0 } && m.App != "Spotify")
     {
-        var vkey = $"video|{m.App}|{m.Title}";
+        var vkey = $"video|{m.App}|{m.Title}|{(m.DurMs + 500) / 1000}";
         // the song's lyrics, found from the video's title; the YouTube picture in high quality when it is a YouTube video
         var (song, singer) = LyricsService.FromVideo(m.Title, m.Artist);
         object? vwords = null;
         var vpending = false;
         if (have != vkey && song.Length > 0)
         {
-            var task = lyrics.GetAsync(song, singer, "", 0);   // a clip's length is not the song's: no length to match
+            var task = lyrics.GetVideoAsync(m.Title, m.Artist, m.DurMs);
             if (task.IsCompleted || await Task.WhenAny(task, Task.Delay(400, ct)) == task)
             {
                 var r = await task;
@@ -987,10 +987,12 @@ app.MapGet("/api/lyrics/now", async (string? have, bool? any, MediaMonitor media
             }
             else vpending = true;
         }
+        var videoClock = yt.PositionFor(m.Title);
+        if (videoClock is { } position) m = m with { PosMs = position.PosMs, Playing = position.Playing, SampledAt = System.Diagnostics.Stopwatch.GetTimestamp() };
         var image = yt.Current() is { } v && !string.IsNullOrEmpty(v.Title) && (m.Title.Contains(v.Title, StringComparison.OrdinalIgnoreCase) || v.Title.Contains(m.Title, StringComparison.OrdinalIgnoreCase))
             ? $"https://i.ytimg.com/vi/{v.VideoId}/maxresdefault.jpg" : null;
         return Results.Json(new { playing = true, key = vkey, kind = "video", media = m, image, song, singer,
-            lyrics = vwords, pending = vpending, posOffsetMs = 0 });
+            lyrics = vwords, pending = vpending, posOffsetMs = 0, clockSource = videoClock is null ? "system" : "youtube" });
     }
     // only Spotify: a video in the browser or another player leaves this page alone
     if (m is null || m.Title.Length == 0 || m.App != "Spotify") return Results.Json(new { playing = false, other = m?.App });

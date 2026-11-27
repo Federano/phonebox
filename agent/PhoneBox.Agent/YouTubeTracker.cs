@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace PhoneBox.Agent;
@@ -51,6 +52,20 @@ public sealed partial class YouTubeTracker
     }
 
     public void RequestPause(string videoId) { lock (_gate) _pauseFor = videoId; }
+
+    /// <summary>The extension's millisecond clock for this exact video; never borrow another tab's position.</summary>
+    public (string VideoId, long PosMs, bool Playing)? PositionFor(string title)
+    {
+        lock (_gate)
+        {
+            if (_last is null || string.IsNullOrWhiteSpace(title) || !string.Equals(
+                _last.Title.Normalize(NormalizationForm.FormC), title.Trim().Normalize(NormalizationForm.FormC),
+                StringComparison.OrdinalIgnoreCase)) return null;
+            var age = Stopwatch.GetElapsedTime(_last.At);
+            if (age > Fresh) return null;
+            return (_last.VideoId, (long)Math.Round(_last.Time * 1000 + (_last.Playing ? age.TotalMilliseconds : 0)), _last.Playing);
+        }
+    }
 
     // ---- Federano mirroring: where the playing <video> is inside the browser window (physical pixels)
     private (int X, int Y, int Width, int Height, long At)? _rect;

@@ -47,6 +47,7 @@ export function createTabletCalendar(options = {}) {
     };
     state.connected = state.supported && state.configured && state.permissionGranted &&
       raw.connected === true && !!state.connectionId;
+    if (raw.error) { state.error = cleanText(raw.error, 512); state.code = cleanText(raw.code, 64); }
     return state;
   }
 
@@ -86,7 +87,9 @@ export function createTabletCalendar(options = {}) {
     let result;
     try { result = typeof json === 'string' ? JSON.parse(json) : json; } catch { item.reject(invalidError()); return; }
     if (!result || typeof result !== 'object' || Array.isArray(result)) { item.reject(invalidError()); return; }
-    if (result.ok === false || (result.error && !Array.isArray(result.today))) {
+    const waitingForSync = result.supported === true && result.configured === true && result.permissionGranted === true &&
+      !!result.connectionId && ['sync_pending', 'sync_disabled'].includes(result.code);
+    if (result.ok === false || (result.error && !Array.isArray(result.today) && !waitingForSync)) {
       item.reject(problem(cleanText(result.error, 512) || 'Não foi possível consultar a agenda do tablet.', cleanText(result.code, 64) || 'unavailable'));
     } else item.resolve(result);
   }
@@ -145,7 +148,7 @@ export function createTabletCalendar(options = {}) {
     return {
       today: [], events: [], calendars: false, source: 'tablet', updatedAt: null,
       account: currentState.account, connectionId: currentState.connectionId,
-      stale, error, needsAuthorization: !currentState.connected,
+      stale, error, needsAuthorization: !currentState.connected && !['sync_pending', 'sync_disabled'].includes(currentState.code),
     };
   }
   function cloneData(data) {
@@ -168,7 +171,7 @@ export function createTabletCalendar(options = {}) {
       return empty(messageOf(error), true);
     }
     if (!selected.supported || !selected.configured) return null;
-    if (!selected.connected) return empty('Autorize o acesso à agenda e selecione uma conta no tablet.');
+    if (!selected.connected) return empty(selected.error || 'Autorize o acesso à agenda e selecione uma conta no tablet.');
     const started = epoch;
     try {
       const raw = await request('today');

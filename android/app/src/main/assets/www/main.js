@@ -1527,12 +1527,21 @@ function soon() { if (!navTimer) navTimer = setInterval(pump, 250); }
 // away: no countdown card and no waiting for the panel to be idle. A minute after Spotify stops (or another player takes
 // over) the panel goes back to the page it came from, if it is still on the lyrics.
 let spLast = '', spStopSince = 0, spFrom = -1, spPlayedAt = 0;
+let videoPlayedAt = 0;
+const listenVideoMode = () => { try { return localStorage.getItem('federano.listenVideo') === '1'; } catch (_) { return false; } };
+const readingVideoActive = () => listenVideoMode() && (pages[curPage]?.widgets || []).some((w) => w.type === 'lyrics') &&
+  ((media && media.app !== 'Spotify' && media.playing) || (videoPlayedAt > 0 && Date.now() - videoPlayedAt < 60_000));
 const lyricsPageId = () => pages.find((p) => (p.widgets || []).some((w) => w.type === 'lyrics'))?.id || null;
 export function spotifyAuto(m) {
   if (PREVIEW) return;
   const id = lyricsPageId();
   if (!id) return;
   const idx = resolvePage(id);
+  if (m && m.app !== 'Spotify' && m.playing && listenVideoMode()) {
+    videoPlayedAt = Date.now();
+    // The user switched to YouTube on this same lyrics page: Spotify's old return must not take it away later.
+    spLast = ''; spStopSince = 0; spFrom = -1;
+  }
   if (m && m.app === 'Spotify' && m.playing) {
     spStopSince = 0; spPlayedAt = Date.now();
     const k = `${m.title}|${m.artist}`;
@@ -1569,7 +1578,7 @@ function idleDue() {
   if (pagePaused) return false;
   // Federano: while Spotify plays the panel stays where it is ("Ninguém por perto" does not take it home)
   // (and for a minute after it stops: between two songs it is briefly not playing, and that must not ask to leave)
-  if ((media && media.app === 'Spotify' && media.playing) || Date.now() - spPlayedAt < 60_000) return false;
+  if ((media && media.app === 'Spotify' && media.playing) || Date.now() - spPlayedAt < 60_000 || readingVideoActive()) return false;
   const idle = idleLimit();
   if (!(idle > 0)) return false;
   const maxHold = (dsp().holdMaxMin ?? 30) * 60_000;
@@ -2037,7 +2046,7 @@ export function applyBurnIn() {
     root.setProperty('--night-y', `${ny}vmin`);
   }
   const after = Math.max(0, Math.floor(+d.idleDimMin || 0)) * 60_000;
-  const dim = after > 0 && !PREVIEW && !nightOn && $('approval').hidden
+  const dim = after > 0 && !PREVIEW && !nightOn && !readingVideoActive() && $('approval').hidden
     && Date.now() - Math.max(lastTouch, lastNav, lastWake) > after;
   if (dim !== dimmed) {
     dimmed = dim;

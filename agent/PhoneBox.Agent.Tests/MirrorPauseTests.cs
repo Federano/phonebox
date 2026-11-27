@@ -21,6 +21,29 @@ public class MirrorPauseTests
         yt.ReportTab(2, false);
         Assert.True(yt.ReportTab(2, true));     // played again after a pause
     }
+
+    [Fact]
+    public void VideoClockKeepsMillisecondsAndDoesNotAdvanceWhilePaused()
+    {
+        var yt = new YouTubeTracker();
+        yt.Update("abcdefghijk", 20.183, false, "Supercombo - Abraço");
+        var position = yt.PositionFor("Supercombo - Abraço");
+        Assert.NotNull(position);
+        Assert.Equal(20183, position.Value.PosMs);
+        Assert.False(position.Value.Playing);
+        Assert.Null(yt.PositionFor("Another song"));
+        Assert.Null(yt.PositionFor(""));
+    }
+
+    [Fact]
+    public void VideoClockRecognizesUnicodeAndFollowsSeekingWithoutSmoothingItAway()
+    {
+        var yt = new YouTubeTracker();
+        yt.Update("abcdefghijk", 20.183, false, "Supercombo - Todo Dia É Dia de Comemorar");
+        Assert.Equal(20183, yt.PositionFor("Supercombo - Todo Dia É Dia de Comemorar")!.Value.PosMs);
+        yt.Update("abcdefghijk", 80.625, true, "Supercombo - Todo Dia É Dia de Comemorar");
+        Assert.InRange(yt.PositionFor("Supercombo - Todo Dia É Dia de Comemorar")!.Value.PosMs, 80625, 81625);
+    }
 }
 
 /// <summary>Federano "Só ouvir": the song inside a music video's title, for its lyrics.</summary>
@@ -33,6 +56,11 @@ public class VideoSongTests
     [InlineData("Fabio Brazza - FIC(ALI)GADO (Prod. NoShugah)", "Fabio Brazza", "FIC(ALI)GADO", "Fabio Brazza")]
     [InlineData("Helipa [Official Video]", "Yago Oproprio - Topic", "Helipa", "Yago Oproprio")]
     [InlineData("Yago Oproprio – La Noche (Clipe Oficial)", "Canal", "La Noche", "Yago Oproprio")]
+    [InlineData("Abraço (Medulla) - Supercombo | ELEFANTE SESSIONS", "Elefante Sessions", "Abraço", "Supercombo")]
+    [InlineData("Abraço - Supercombo | ELEFANTE SESSIONS", "Supercombo", "Abraço", "Supercombo")]
+    [InlineData("Supercombo - Piloto (Clipe Oficial) | Canal", "Supercombo", "Piloto", "Supercombo")]
+    [InlineData("Artist &amp; Guest - Song [Official Video]", "Canal", "Song", "Artist")]
+    [InlineData("Caue Moura - Ozymandias ♫ (prod. Marcus Maia)", "Caue Moura", "Ozymandias", "Caue Moura")]
     public void FindsSongAndArtist(string title, string channel, string song, string artist) =>
         Assert.Equal((song, artist), LyricsService.FromVideo(title, channel));
 }
