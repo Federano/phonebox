@@ -1958,7 +1958,7 @@ body[data-ftheme="01"] .mc-said { background: rgba(6, 6, 8, .94); border: 1px so
 .w-fhome .fh-pill { border: 1px solid var(--fl); border-radius: 999px; padding: .5cqw 1.2cqw; font: max(11px, 1.05cqw) ui-monospace, "Roboto Mono", monospace; color: var(--fm); white-space: nowrap; display: inline-flex; align-items: center; gap: .5cqw; }
 .w-fhome .fh-pill b { color: #f4f4f6; font-weight: 400; }
 .w-fhome .fh-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fr); animation: fh-blink 2s ease-in-out infinite; } .w-fhome .fh-dot.off { background: var(--fd); animation: none; }
-.w-fhome .fh-row { display: grid; grid-template-columns: 1.3fr 1fr; gap: 1.4cqw; min-height: 0; }
+.w-fhome .fh-row { display: grid; grid-template-columns: 1fr 1.3fr; gap: 1.4cqw; min-height: 0; }
 .w-fhome .fh-card { background: var(--fc); border: 1px solid var(--fl); border-radius: 1.4cqw; padding: 1.5cqw 1.7cqw; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 1cqw; overflow: hidden; color: inherit; text-align: left; font: inherit; }
 .w-fhome .fh-npr { display: grid; grid-template-columns: 13cqw 1fr; gap: 2cqw; align-items: center; min-height: 0; }
 .w-fhome .fh-artw { aspect-ratio: 1; border-radius: 1cqw; border: 1px solid var(--fl); overflow: hidden; background: radial-gradient(circle at 45% 45%, #5a1020, #160407 70%); }

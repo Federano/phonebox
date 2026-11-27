@@ -32,7 +32,7 @@ W.fhome = {
     const wxCity = h('div', 'fh-lbl'), wxNow = h('div', 'fh-wxnow'), wxSub = h('div', 'fh-sub'), wxDays = h('div', 'fh-days');
     const wx = h('div', 'fh-card fh-wx', wxCity, wxNow, wxSub, wxDays);
     // (no page buttons here: the side rail already goes to every page)
-    box.append(head, h('div', 'fh-row', np, meet), h('div', 'fh-sys', ...cards.map((c) => c.el), wx));
+    box.append(head, h('div', 'fh-row', meet, np), h('div', 'fh-sys', ...cards.map((c) => c.el), wx));
 
     let meetAt = 0, artId = -1;
     async function drawMeet() {
