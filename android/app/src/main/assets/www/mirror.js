@@ -1,4 +1,4 @@
-import { API, PANEL_HEADERS, bridge, gotoSkillPage, haptic, toast } from './main.js';
+import { API, PANEL_HEADERS, bridge, gotoSkillPage, haptic, openNowPlaying, toast } from './main.js';
 
 // ---------------------------------------------------------------- Federano mirroring
 // Full-screen view of the PC's video, live. The agent captures the player's window (cropped to the video in a browser)
@@ -60,7 +60,12 @@ export function openMirror(title) {
   const el = document.createElement('div');
   el.className = 'mirror';
   const ctl = controls();
-  el.append(img, label, fps, ctl.el, mini, close);
+  // back from the video to the music screen (lyrics or "Só ouvir"): the video keeps playing on the PC, only the tablet changes
+  const music = document.createElement('button');
+  music.className = 'mirror-mini mirror-music';
+  music.setAttribute('aria-label', 'Voltar para a música e a letra');
+  music.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>';
+  el.append(img, label, fps, ctl.el, music, mini, close);
   document.body.append(el);
 
   // ---- floating bubble while minimized: live thumbnail, drag it anywhere, tap to come back
@@ -407,6 +412,7 @@ export function openMirror(title) {
 
   close.onclick = () => { haptic(); stop(); };
   mini.onclick = () => { haptic(); minimize(); };
+  music.onclick = () => { haptic(); stop(); openNowPlaying(); };
   overlay = { stop, restore, minimize };
   // the app shows the bubble over other apps while a mirror is open (Android permission "Exibir sobre outros apps")
   if (bridge && bridge.setMirrorBubble) bridge.setMirrorBubble(true);

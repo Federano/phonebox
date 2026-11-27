@@ -248,3 +248,22 @@ test('"Só ouvir" lists the YouTube playlist like Spotify\'s queue and plays the
   if (process.env.SHOTS) { await page.waitForTimeout(800); await page.screenshot({ path: process.env.SHOTS + '/lista-youtube.png' }); }
   expect(errors).toEqual([]);
 });
+
+test('the mirrored video has a button back to the music screen', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto('/panel/');
+  await page.evaluate(() => {
+    localStorage.clear();
+    localStorage.setItem('pb-demo-config', JSON.stringify({ night: { enabled: false }, shortcuts: [], display: { idleReturnSec: 0 }, pages: [
+      { id: 'home', title: 'Início', enabled: true, widgets: [{ id: 'c', type: 'clock', x: 0, y: 0, w: 6, h: 4, options: {} }] },
+      { id: 'letra', title: 'Letra', enabled: true, widgets: [{ id: 'ly', type: 'lyrics', x: 0, y: 0, w: 12, h: 6, options: {} }] }] }));
+  });
+  await page.reload();
+  await page.evaluate(async () => (await import('/panel/mirror.js')).openMirror('Clipe no PC'));
+  await expect(page.locator('.mirror')).toHaveCount(1);
+  await page.locator('.mirror-music').click({ force: true });
+  await expect(page.locator('.mirror')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(async () => (await import('/panel/main.js')).curPage)).toBe(1);
+  expect(errors).toEqual([]);
+});
