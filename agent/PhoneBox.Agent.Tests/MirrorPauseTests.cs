@@ -64,3 +64,22 @@ public class VideoSongTests
     public void FindsSongAndArtist(string title, string channel, string song, string artist) =>
         Assert.Equal((song, artist), LyricsService.FromVideo(title, channel));
 }
+
+/// <summary>Federano "Só ouvir": the YouTube playlist the extension reports, and the tablet's pick.</summary>
+public class YouTubeQueueTests
+{
+    [Fact]
+    public void ParsesOnlyValidItemsAndHandsThePickOnce()
+    {
+        var q = YouTubeTracker.ParseQueue("""[{"v":"dQw4w9WgXcQ","t":" Naquele Bar ","c":"Fabio Brazza"},{"v":"bad","t":"x"},{"v":"aaaaaaaaaaa","t":""},"lixo"]""");
+        Assert.Single(q);
+        Assert.Equal(new YouTubeTracker.QueueItem("dQw4w9WgXcQ", "Naquele Bar", "Fabio Brazza"), q[0]);
+        Assert.Empty(YouTubeTracker.ParseQueue("{nao é json"));
+        var yt = new YouTubeTracker();
+        yt.UpdateQueue(q);
+        Assert.Single(yt.Queue());
+        yt.RequestPlay("dQw4w9WgXcQ");
+        Assert.Equal("dQw4w9WgXcQ", yt.TakePlay());
+        Assert.Null(yt.TakePlay());
+    }
+}

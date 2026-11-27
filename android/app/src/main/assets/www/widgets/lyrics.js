@@ -342,9 +342,11 @@ W.lyrics = {
         row.onclick = async () => {
           haptic();
           try {
-            const r = await fetch(`${API}/controls/spotify/action/play-queued?id=${encodeURIComponent(q.id)}`, { method: 'POST', cache: 'no-store', headers: PANEL_HEADERS });
+            // a YouTube playlist item is played by the YouTube page itself (through the agent and the Chrome extension)
+            const url = q.yt ? `${API}/browser/playlist/play?v=${encodeURIComponent(q.id)}` : `${API}/controls/spotify/action/play-queued?id=${encodeURIComponent(q.id)}`;
+            const r = await fetch(url, { method: 'POST', cache: 'no-store', headers: PANEL_HEADERS });
             const j = await r.json();
-            if (j && j.ok === false) toast(j.error || 'O Spotify não tocou essa música.', 'err');
+            if (j && j.ok === false) toast(j.error || 'Não deu para tocar essa música.', 'err');
           } catch (_) { toast('Sem conexão com o PC.', 'err'); }
           setTimeout(() => { clearTimeout(timer); poll(); }, 1200);
         };
@@ -625,7 +627,7 @@ W.lyrics = {
             lastArtistPending = !!j.artistPending;
             if (title.textContent !== m.title) { const meta = title.parentElement; meta.classList.remove('ly-swap'); void meta.offsetWidth; meta.classList.add('ly-swap'); }
             title.textContent = m.title; artist.textContent = [m.artist, m.album].filter(Boolean).join(' · ');
-            if (m.app === 'Spotify') { fillQueue(j.queue, m.title); if (visible()) loadModes(); } else { lastQueue = []; fillQueue([]); }
+            if (m.app === 'Spotify') { fillQueue(j.queue, m.title); if (visible()) loadModes(); } else if (j.kind === 'video') fillQueue(j.queue || []); else { lastQueue = []; fillQueue([]); }
             chip.textContent = `● ${m.app || 'PC'} · ${m.playing ? 'tocando' : 'pausado'}`;
             total.textContent = m.durMs > 0 ? clock(m.durMs) : '';
             showPlay();
@@ -652,7 +654,7 @@ W.lyrics = {
               if (pName.dataset.t !== (ep.name || m.title)) { pName.dataset.t = ep.name || m.title; pName.replaceChildren(...pName.dataset.t.split(' ').flatMap((w, j) => { const s2 = h('span', 'ly-w', w); s2.style.animationDelay = (j * 80) + 'ms'; return [s2, ' ']; })); }
               pMeta.textContent = [niceDate(ep.date), ep.durationMs > 0 ? longTime(ep.durationMs) : '', ep.publisher].filter(Boolean).join(' · ');
               pDesc.textContent = ep.description || '';
-              lastQueue = []; fillQueue([]);
+              if (j.kind === 'video') fillQueue(j.queue || []); else { lastQueue = []; fillQueue([]); }
               setArt(ep.image || (m.artId ? `${API}/art?v=${m.artId}` : ''), false);
               tint();
               // a video whose lyrics are still on their way keeps asking for them (no key yet)

@@ -903,7 +903,7 @@ app.MapPost("/api/skills/run", async (string? text, SkillEngine skills) =>
 
 // Federano Chrome extension: the YouTube video open on the PC. The answer tells it to pause when the video was
 // taken to the tablet.
-app.MapPost("/api/browser/youtube", (string? v, double? t, bool? playing, string? title, int? x, int? y, int? w, int? h, int? tab,
+app.MapPost("/api/browser/youtube", (string? v, double? t, bool? playing, string? title, int? x, int? y, int? w, int? h, int? tab, string? queue,
     double? rfx, double? rfy, double? rfw, double? rfh, double? rar, YouTubeTracker yt, MirrorCapture mirror) =>
 {
     if (tab is { } rt && rfx is { } a && rfy is { } b && rfw is { } c && rfh is { } d && rar is { } e) yt.UpdatePageRect(rt, new(a, b, c, d, e));
@@ -912,7 +912,17 @@ app.MapPost("/api/browser/youtube", (string? v, double? t, bool? playing, string
     // the playing video's rectangle in the browser window, for mirroring (any site); nothing else is kept
     if (playing == true && x is { } rx && y is { } ry && w is { } rw && h is { } rh) yt.UpdateRect(rx, ry, rw, rh);
     var pause = (YouTubeTracker.ValidId(v) && t is { } time && yt.Update(v!, time, playing == true, title)) | (tab is { } pt && yt.TakePauseTab(pt) && playing == true);
-    return Results.Json(new { pause, mirror = tab is { } mt && mirror.WantsTab(mt) });
+    // the YouTube page also tells which videos come next (its playlist); the tablet's pick goes back to that page
+    string? play = null;
+    if (YouTubeTracker.ValidId(v)) { if (queue is not null) yt.UpdateQueue(YouTubeTracker.ParseQueue(queue)); play = yt.TakePlay(); }
+    return Results.Json(new { pause, mirror = tab is { } mt && mirror.WantsTab(mt), play });
+});
+// Federano "Só ouvir": the tablet picked a video of the YouTube playlist; the YouTube page plays it at its next report
+app.MapPost("/api/browser/playlist/play", (string? v, YouTubeTracker yt) =>
+{
+    if (!YouTubeTracker.ValidId(v) || !yt.Queue().Any(q => q.Id == v)) return Results.Json(new { ok = false, error = "Esse vídeo não está mais na lista." });
+    yt.RequestPlay(v!);
+    return Results.Json(new { ok = true });
 });
 
 // Federano mirroring: the tablet starts it, then pulls JPEG frames (long poll: waits for a frame newer than "after").
@@ -992,7 +1002,8 @@ app.MapGet("/api/lyrics/now", async (string? have, bool? any, MediaMonitor media
         var image = yt.Current() is { } v && !string.IsNullOrEmpty(v.Title) && (m.Title.Contains(v.Title, StringComparison.OrdinalIgnoreCase) || v.Title.Contains(m.Title, StringComparison.OrdinalIgnoreCase))
             ? $"https://i.ytimg.com/vi/{v.VideoId}/maxresdefault.jpg" : null;
         return Results.Json(new { playing = true, key = vkey, kind = "video", media = m, image, song, singer,
-            lyrics = vwords, pending = vpending, posOffsetMs = 0, clockSource = videoClock is null ? "system" : "youtube" });
+            lyrics = vwords, pending = vpending, posOffsetMs = 0, clockSource = videoClock is null ? "system" : "youtube",
+            queue = yt.Queue().Select(q => new { id = q.Id, name = q.Title, artist = q.Channel, yt = true }) });
     }
     // only Spotify: a video in the browser or another player leaves this page alone
     if (m is null || m.Title.Length == 0 || m.App != "Spotify") return Results.Json(new { playing = false, other = m?.App });

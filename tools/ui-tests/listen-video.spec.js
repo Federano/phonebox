@@ -216,3 +216,35 @@ test('reading YouTube lyrics prevents absence return and dimming, survives a cli
   });
   await expect.poll(() => page.evaluate(async () => (await import('/panel/main.js')).curPage)).toBe(0);
 });
+
+test('"Só ouvir" lists the YouTube playlist like Spotify\'s queue and plays the picked video', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto('/panel/');
+  await page.evaluate(() => {
+    localStorage.clear(); localStorage.setItem('federano.listenVideo', '1'); localStorage.setItem('federano.videoView', 'info');
+    localStorage.setItem('pb-demo-config', JSON.stringify({ night: { enabled: false }, shortcuts: [], pages: [{ id: 'letra', title: 'Letra', enabled: true, widgets: [{ id: 'ly', type: 'lyrics', x: 0, y: 0, w: 12, h: 6, options: {} }] }] }));
+  });
+  await page.reload();
+  await page.evaluate(() => {
+    window.__plays = [];
+    const real = window.fetch;
+    window.fetch = (url, init) => {
+      const u = String(url);
+      const json = (d) => Promise.resolve(new Response(JSON.stringify(d), { headers: { 'Content-Type': 'application/json' } }));
+      if (u.includes('/browser/playlist/play')) { window.__plays.push(u.replace(/^.*\/api/, '')); return json({ ok: true }); }
+      if (u.includes('/lyrics/now')) return json({ playing: true, key: 'video|Chrome|Fabio Brazza - Naquele Bar (Prod. Paiva)', kind: 'video', image: null,
+        media: { app: 'Chrome', title: 'Fabio Brazza - Naquele Bar (Prod. Paiva)', artist: 'Fabio Brazza', album: '', playing: true, posMs: 5000, durMs: 231000, artId: 0, canSeek: true, ageMs: 0 },
+        lyrics: { found: false, instrumental: false, plain: '', lines: [] }, pending: false, posOffsetMs: 0,
+        queue: [{ id: 'aaaaaaaaaaa', name: 'Mc Sid & Aline Mc - Feio é Elogio', artist: 'Bendita Gravadora', yt: true }, { id: 'bbbbbbbbbbb', name: 'Twenty One Pilots - Seven Nation Army', artist: 'Matthew Baker 2', yt: true }] });
+      return real(url, init);
+    };
+  });
+  const ly = page.locator('.w.ly');
+  await expect(ly.locator('.ly-q')).toHaveCount(2, { timeout: 12000 });
+  await expect(ly.locator('.ly-qh')).toBeVisible();
+  await ly.locator('.ly-q', { hasText: 'Seven Nation Army' }).click();
+  await expect.poll(() => page.evaluate(() => window.__plays)).toEqual(['/browser/playlist/play?v=bbbbbbbbbbb']);
+  if (process.env.SHOTS) { await page.waitForTimeout(800); await page.screenshot({ path: process.env.SHOTS + '/lista-youtube.png' }); }
+  expect(errors).toEqual([]);
+});

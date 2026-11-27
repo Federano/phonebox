@@ -14,6 +14,23 @@
     return m ? m[1] : null;
   };
 
+  // Federano "Só ouvir": the videos after the playing one in YouTube's playlist panel (a mix or a playlist), for the tablet
+  function playlistNext() {
+    const rows = [...document.querySelectorAll('ytd-playlist-panel-video-renderer')];
+    const at = rows.findIndex((r) => r.hasAttribute('selected'));
+    if (at < 0) return null;
+    return rows.slice(at + 1, at + 11).map((r) => {
+      const href = r.querySelector('a#wc-endpoint')?.getAttribute('href') || '';
+      const v = (href.match(/[?&]v=([A-Za-z0-9_-]{11})/) || [])[1] || '';
+      return { v, t: (r.querySelector('#video-title')?.textContent || '').trim().slice(0, 150), c: (r.querySelector('#byline')?.textContent || '').trim().slice(0, 80) };
+    }).filter((q) => q.v && q.t);
+  }
+  // the tablet picked one of them: the same link YouTube's own list uses
+  function playFromList(v) {
+    const a = [...document.querySelectorAll('ytd-playlist-panel-video-renderer a#wc-endpoint')].find((x) => (x.getAttribute('href') || '').includes('v=' + v));
+    if (a) a.click();
+  }
+
   // the biggest video on the page, playing ones first
   function mainVideo() {
     let best = null, bestScore = 0;
@@ -38,11 +55,14 @@
     if (id && /^[A-Za-z0-9_-]{11}$/.test(id)) {
       msg.v = id; msg.t = Math.max(0, v.currentTime || 0);
       msg.title = (document.title || '').replace(/^\(\d+\)\s*/, '').replace(/\s*-\s*YouTube$/, '');
+      const next = playlistNext();
+      if (next) msg.queue = next;
     }
     try {
       chrome.runtime.sendMessage(msg, (answer) => {
         if (chrome.runtime.lastError || !answer) return;
         if (answer.pause && !v.paused) v.pause();
+        if (answer.play) playFromList(answer.play);
         if (answer.mirror && !mirroring) begin();
         else if (!answer.mirror && mirroring) stopMirror();
         else if (answer.tabCapture && pagePipeRunning()) stopPagePipe();   // the tab capture took over

@@ -53,6 +53,38 @@ public sealed partial class YouTubeTracker
 
     public void RequestPause(string videoId) { lock (_gate) _pauseFor = videoId; }
 
+    // ---- Federano "Só ouvir": the YouTube playlist (mix) that follows the playing video, and a pick from it on the tablet
+    public sealed record QueueItem(string Id, string Title, string Channel);
+    private (IReadOnlyList<QueueItem> Items, long At)? _queue;
+    private string? _playNext;
+
+    public void UpdateQueue(IReadOnlyList<QueueItem> items) { lock (_gate) _queue = (items, Stopwatch.GetTimestamp()); }
+
+    /// <summary>The next videos of the YouTube playlist, as the extension last saw them (empty when not reported lately).</summary>
+    public IReadOnlyList<QueueItem> Queue()
+    {
+        lock (_gate) return _queue is { } q && Stopwatch.GetElapsedTime(q.At) < Fresh ? q.Items : [];
+    }
+
+    public void RequestPlay(string videoId) { lock (_gate) _playNext = videoId; }
+    public string? TakePlay() { lock (_gate) { var v = _playNext; _playNext = null; return v; } }
+
+    /// <summary>The extension's "queue" parameter: [{"v","t","c"}, …], at most 10 valid items.</summary>
+    public static IReadOnlyList<QueueItem> ParseQueue(string? json)
+    {
+        if (string.IsNullOrEmpty(json) || json.Length > 8000) return [];
+        try
+        {
+            return (System.Text.Json.Nodes.JsonNode.Parse(json) as System.Text.Json.Nodes.JsonArray ?? [])
+                .OfType<System.Text.Json.Nodes.JsonObject>().Select(n => new QueueItem(n?["v"]?.GetValue<string>() ?? "", (n?["t"]?.GetValue<string>() ?? "").Trim(), (n?["c"]?.GetValue<string>() ?? "").Trim()))
+                .Where(q => ValidId(q.Id) && q.Title.Length > 0)
+                .Select(q => q with { Title = q.Title[..Math.Min(q.Title.Length, 150)], Channel = q.Channel[..Math.Min(q.Channel.Length, 80)] })
+                .Take(10).ToList();
+        }
+        catch (System.Text.Json.JsonException) { return []; }
+        catch (InvalidOperationException) { return []; }
+    }
+
     /// <summary>The extension's millisecond clock for this exact video; never borrow another tab's position.</summary>
     public (string VideoId, long PosMs, bool Playing)? PositionFor(string title)
     {

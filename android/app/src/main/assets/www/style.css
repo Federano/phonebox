@@ -1891,3 +1891,7 @@ body[data-ftheme="01"].f-rail-off .f-rail-tog { left: 0; }
   body[data-ftheme="01"] #overview:not([hidden]) .ov-tile:nth-child(n+6) { animation-delay: .2s; }
   body[data-ftheme="01"] .f-rail-i.on svg { animation: m01-pop .45s ease-out; }
 }
+
+/* "Só ouvir": the YouTube playlist shows under the controls, in the details view too (like Spotify's "A seguir") */
+.w.ly.ly-podcast.ly-video .ly-qh:not([hidden]) { display: block; }
+.w.ly.ly-podcast.ly-video .ly-queue { display: flex; }
