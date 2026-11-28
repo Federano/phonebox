@@ -904,14 +904,14 @@ app.MapPost("/api/skills/run", async (string? text, SkillEngine skills) =>
 // Federano Chrome extension: the YouTube video open on the PC. The answer tells it to pause when the video was
 // taken to the tablet.
 app.MapPost("/api/browser/youtube", (string? v, double? t, bool? playing, string? title, int? x, int? y, int? w, int? h, int? tab, string? queue,
-    double? rfx, double? rfy, double? rfw, double? rfh, double? rar, YouTubeTracker yt, MirrorCapture mirror) =>
+    double? rfx, double? rfy, double? rfw, double? rfh, double? rar, double? rate, bool? advancing, bool? ad, YouTubeTracker yt, MirrorCapture mirror) =>
 {
     if (tab is { } rt && rfx is { } a && rfy is { } b && rfw is { } c && rfh is { } d && rar is { } e) yt.UpdatePageRect(rt, new(a, b, c, d, e));
     // Federano: a video starting in another tab while one is shown on the tablet pauses the tablet's one (no two sounds at once)
     if (tab is { } tb && yt.ReportTab(tb, playing == true) && mirror.BrowserTab is { } shown && shown != tb) yt.RequestPauseTab(shown);
     // the playing video's rectangle in the browser window, for mirroring (any site); nothing else is kept
     if (playing == true && x is { } rx && y is { } ry && w is { } rw && h is { } rh) yt.UpdateRect(rx, ry, rw, rh);
-    var pause = (YouTubeTracker.ValidId(v) && t is { } time && yt.Update(v!, time, playing == true, title)) | (tab is { } pt && yt.TakePauseTab(pt) && playing == true);
+    var pause = (YouTubeTracker.ValidId(v) && t is { } time && yt.Update(v!, time, playing == true, title, rate: rate, advancing: advancing, isAd: ad == true)) | (tab is { } pt && yt.TakePauseTab(pt) && playing == true);
     // the YouTube page also tells which videos come next (its playlist); the tablet's pick goes back to that page
     string? play = null;
     if (YouTubeTracker.ValidId(v)) { if (queue is not null) yt.UpdateQueue(YouTubeTracker.ParseQueue(queue)); play = yt.TakePlay(); }
@@ -982,7 +982,8 @@ app.MapGet("/api/lyrics/now", async (string? have, bool? any, MediaMonitor media
     // Federano "Só ouvir" (the video pop-up's third answer): a video on the PC shown as sound only, like a podcast
     if (any == true && m is { Title.Length: > 0 } && m.App != "Spotify")
     {
-        var vkey = $"video|{m.App}|{m.Title}|{(m.DurMs + 500) / 1000}";
+        var videoClock = yt.PositionFor(m.Title);
+        var vkey = $"video|{m.App}|{m.Title}|{m.Artist}|{(m.DurMs + 500) / 1000}|{videoClock?.VideoId ?? "system"}";
         // the song's lyrics, found from the video's title; the YouTube picture in high quality when it is a YouTube video
         var (song, singer) = LyricsService.FromVideo(m.Title, m.Artist);
         object? vwords = null;
@@ -997,12 +998,17 @@ app.MapGet("/api/lyrics/now", async (string? have, bool? any, MediaMonitor media
             }
             else vpending = true;
         }
-        var videoClock = yt.PositionFor(m.Title);
+        // Re-read after a lyric lookup: the reported clock should be as close as possible to this response.
+        videoClock = yt.PositionFor(m.Title);
+        var currentKey = $"video|{m.App}|{m.Title}|{m.Artist}|{(m.DurMs + 500) / 1000}|{videoClock?.VideoId ?? "system"}";
+        if (currentKey != vkey) { vkey = currentKey; if (vwords is null) vpending = true; }
         if (videoClock is { } position) m = m with { PosMs = position.PosMs, Playing = position.Playing, SampledAt = System.Diagnostics.Stopwatch.GetTimestamp() };
         var image = yt.Current() is { } v && !string.IsNullOrEmpty(v.Title) && (m.Title.Contains(v.Title, StringComparison.OrdinalIgnoreCase) || v.Title.Contains(m.Title, StringComparison.OrdinalIgnoreCase))
             ? $"https://i.ytimg.com/vi/{v.VideoId}/maxresdefault.jpg" : null;
         return Results.Json(new { playing = true, key = vkey, kind = "video", media = m, image, song, singer,
             lyrics = vwords, pending = vpending, posOffsetMs = 0, clockSource = videoClock is null ? "system" : "youtube",
+            clockRate = videoClock?.PlaybackRate ?? 1, clockAdvancing = videoClock?.Advancing ?? m.Playing,
+            clockAd = videoClock?.IsAd ?? false, clockVideoId = videoClock?.VideoId,
             queue = yt.Queue().Select(q => new { id = q.Id, name = q.Title, artist = q.Channel, yt = true }) });
     }
     // only Spotify: a video in the browser or another player leaves this page alone

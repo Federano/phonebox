@@ -139,7 +139,8 @@ async function videoFixture(page, options = {}) {
     window.__videoCalls = []; window.__videoAvailable = !options.missing;
     window.__videoReply = {
       playing: true, key: 'video|Chrome|Supercombo - Música de teste', kind: 'video',
-      clockSource: options.clockSource || 'system', pending: false, posOffsetMs: 0,
+      clockSource: options.clockSource || 'system', clockRate: options.rate ?? 1,
+      clockAdvancing: options.advancing ?? !options.paused, clockAd: !!options.ad, pending: false, posOffsetMs: 0,
       media: { app: 'Chrome', title: 'Supercombo - Música de teste', artist: 'Supercombo', album: '',
         playing: !options.paused, posMs: 5000, durMs: 235000, artId: 0, canSeek: true, ageMs: options.ageMs || 0 },
     };
@@ -186,6 +187,82 @@ test('a paused video does not add the age of its last sample to the lyrics posit
   const ly = await videoFixture(page, { paused: true, ageMs: 90000 });
   await expect(ly.locator('.ly-line.on')).toHaveText('Linha fictícia atual');
   await expect(ly.locator('.ly-times')).toContainText('0:05');
+});
+
+test('YouTube seeks and pauses reach the lyrics within the next one-second poll', async ({ page }) => {
+  const ly = await videoFixture(page, { clockSource: 'youtube' });
+  await expect(ly.locator('.ly-line.on')).toHaveText('Linha fictícia atual');
+  await page.evaluate(() => {
+    window.__videoReply.media.posMs = 90000;
+    window.__videoReply.media.playing = false;
+    window.__videoReply.clockAdvancing = false;
+  });
+  await expect(ly.locator('.ly-line.on')).toHaveText('Linha fictícia posterior', { timeout: 2200 });
+  await expect(ly.locator('.ly-times span').first()).toHaveText('1:30');
+  await page.waitForTimeout(1200);
+  await expect(ly.locator('.ly-times span').first()).toHaveText('1:30');
+});
+
+test('YouTube playback speed advances the displayed clock at the browser rate', async ({ page }) => {
+  const ly = await videoFixture(page, { clockSource: 'youtube', rate: 2, ageMs: 1500 });
+  await expect(ly.locator('.ly-line.on')).toHaveText('Linha fictícia atual');
+  await expect(ly.locator('.ly-times span').first()).toHaveText('0:08');
+});
+
+test('buffering keeps the YouTube clock still while playback remains active', async ({ page }) => {
+  const ly = await videoFixture(page, { clockSource: 'youtube', rate: 2, advancing: false, ageMs: 90000 });
+  await expect(ly.locator('.ly-line.on')).toHaveText('Linha fictícia atual');
+  await page.waitForTimeout(1300);
+  await expect(ly).not.toHaveClass(/ly-paused/);
+  await expect(ly.locator('.ly-times span').first()).toHaveText('0:05');
+});
+
+test('an advertisement clears the song highlight and resumes only after its content clock returns', async ({ page }) => {
+  const ly = await videoFixture(page, { clockSource: 'youtube' });
+  await expect(ly.locator('.ly-line.on')).toHaveText('Linha fictícia atual');
+  await page.evaluate(() => {
+    window.__videoReply.clockAd = true;
+    window.__videoReply.clockAdvancing = false;
+  });
+  await expect(ly.locator('.ly-line.on')).toHaveCount(0, { timeout: 2200 });
+  await page.evaluate(() => {
+    window.__videoReply.clockAd = false;
+    window.__videoReply.clockAdvancing = true;
+    window.__videoReply.media.posMs = 90000;
+  });
+  await expect(ly.locator('.ly-line.on')).toHaveText('Linha fictícia posterior', { timeout: 2200 });
+});
+
+test('a delayed earlier lyrics response cannot replace a newer YouTube clip', async ({ page }) => {
+  const ly = await videoFixture(page, { clockSource: 'youtube' });
+  await expect(ly.locator('.ly-line.on')).toHaveText('Linha fictícia atual');
+  await page.evaluate(() => {
+    const real = window.fetch;
+    let first = true;
+    window.fetch = (url, init) => {
+      if (!String(url).includes('/lyrics/now')) return real(url, init);
+      if (!first) return real(url, init);
+      first = false;
+      const old = { ...window.__videoReply, media: { ...window.__videoReply.media, title: 'Older clip' },
+        lyrics: { found: true, instrumental: false, plain: '', lines: [{ t: 0, text: 'Old response' }] } };
+      // Deliberately ignores AbortSignal: request fencing must still reject this response.
+      return new Promise((resolve) => { window.__resolveOldLyrics = () => resolve(new Response(JSON.stringify(old))); });
+    };
+    window.dispatchEvent(new Event('federano-listen'));
+  });
+  await expect.poll(() => page.evaluate(() => typeof window.__resolveOldLyrics)).toBe('function');
+  await page.evaluate(() => {
+    window.__videoReply.key = 'video|Chrome|New clip';
+    window.__videoReply.media.title = 'New clip';
+    window.__videoReply.media.posMs = 90000;
+    window.dispatchEvent(new Event('federano-listen'));
+  });
+  await expect(ly.locator('.ly-title')).toHaveText('New clip');
+  await expect(ly.locator('.ly-line.on')).toHaveText('Linha fictícia posterior');
+  await page.evaluate(() => window.__resolveOldLyrics());
+  await page.waitForTimeout(250);
+  await expect(ly.locator('.ly-title')).toHaveText('New clip');
+  await expect(ly.locator('.ly-line.on')).toHaveText('Linha fictícia posterior');
 });
 
 test('reading YouTube lyrics prevents absence return and dimming, survives a clip gap, and releases after playback stops', async ({ page }) => {

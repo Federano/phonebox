@@ -14,7 +14,11 @@ public sealed partial class YouTubeTracker
     /// <summary>A report older than this means the tab was closed or the extension stopped.</summary>
     public static readonly TimeSpan Fresh = TimeSpan.FromSeconds(10);
 
-    public sealed record Report(string VideoId, double Time, bool Playing, string Title, long At);
+    public sealed record Report(string VideoId, double Time, bool Playing, string Title, long At,
+        double PlaybackRate = 1, bool Advancing = true, bool IsAd = false);
+
+    private readonly TimeProvider _clock;
+    public YouTubeTracker(TimeProvider? timeProvider = null) => _clock = timeProvider ?? TimeProvider.System;
 
     private readonly object _gate = new();
     private Report? _last;
@@ -26,28 +30,39 @@ public sealed partial class YouTubeTracker
     public static bool ValidId(string? id) => id is not null && VideoIdRx().IsMatch(id);
 
     /// <summary>Stores a report; returns true when the extension should pause this video now.</summary>
-    public bool Update(string videoId, double time, bool playing, string? title)
+    public bool Update(string videoId, double time, bool playing, string? title,
+        double? rate = null, bool? advancing = null, bool isAd = false)
     {
-        if (!ValidId(videoId) || double.IsNaN(time) || time < 0) return false;
+        if (!ValidId(videoId) || !double.IsFinite(time) || time < 0) return false;
         lock (_gate)
         {
-            _last = new(videoId, Math.Min(time, 86_400 * 7), playing, (title ?? "").Trim()[..Math.Min((title ?? "").Trim().Length, 200)], Stopwatch.GetTimestamp());
+            var stamp = _clock.GetTimestamp();
+            // An ad has its own currentTime. Keep the song's last position until its video resumes.
+            var position = isAd
+                ? _last is { } previous && previous.VideoId == videoId && _clock.GetElapsedTime(previous.At, stamp) <= Fresh
+                    ? PositionAt(previous, _clock.GetElapsedTime(previous.At, stamp)) : 0
+                : Math.Min(time, 86_400 * 7);
+            var playbackRate = rate is > 0 and <= 16 && double.IsFinite(rate.Value) ? rate.Value : 1;
+            _last = new(videoId, position, playing, (title ?? "").Trim()[..Math.Min((title ?? "").Trim().Length, 200)],
+                stamp, playbackRate, playing && (advancing ?? true) && !isAd, isAd);
             if (_pauseFor != videoId) return false;
             _pauseFor = null;
             return playing;
         }
     }
 
-    /// <summary>The video with its position now (a playing video moves on since its last report), or null.</summary>
+    private static double PositionAt(Report report, TimeSpan age) =>
+        report.Time + (report.Advancing ? age.TotalSeconds * report.PlaybackRate : 0);
+
+    /// <summary>The video with its current content position, or null when the extension stopped reporting.</summary>
     public (string VideoId, int Seconds, string Title, bool Playing)? Current()
     {
         lock (_gate)
         {
             if (_last is null) return null;
-            var age = Stopwatch.GetElapsedTime(_last.At);
+            var age = _clock.GetElapsedTime(_last.At);
             if (age > Fresh) return null;
-            var t = _last.Time + (_last.Playing ? age.TotalSeconds : 0);
-            return (_last.VideoId, (int)Math.Floor(t), _last.Title, _last.Playing);
+            return (_last.VideoId, (int)Math.Floor(PositionAt(_last, age)), _last.Title, _last.Playing);
         }
     }
 
@@ -86,16 +101,17 @@ public sealed partial class YouTubeTracker
     }
 
     /// <summary>The extension's millisecond clock for this exact video; never borrow another tab's position.</summary>
-    public (string VideoId, long PosMs, bool Playing)? PositionFor(string title)
+    public (string VideoId, long PosMs, bool Playing, double PlaybackRate, bool Advancing, bool IsAd)? PositionFor(string title)
     {
         lock (_gate)
         {
             if (_last is null || string.IsNullOrWhiteSpace(title) || !string.Equals(
                 _last.Title.Normalize(NormalizationForm.FormC), title.Trim().Normalize(NormalizationForm.FormC),
                 StringComparison.OrdinalIgnoreCase)) return null;
-            var age = Stopwatch.GetElapsedTime(_last.At);
+            var age = _clock.GetElapsedTime(_last.At);
             if (age > Fresh) return null;
-            return (_last.VideoId, (long)Math.Round(_last.Time * 1000 + (_last.Playing ? age.TotalMilliseconds : 0)), _last.Playing);
+            return (_last.VideoId, (long)Math.Round(PositionAt(_last, age) * 1000), _last.Playing,
+                _last.PlaybackRate, _last.Advancing, _last.IsAd);
         }
     }
 

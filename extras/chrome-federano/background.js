@@ -52,6 +52,10 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   const q = new URLSearchParams({ playing: String(!!msg.playing) });
   if (tab !== null) q.set('tab', String(tab));
   if (msg.v) { q.set('v', msg.v); q.set('t', String(msg.t)); q.set('title', String(msg.title || '').slice(0, 200)); }
+  if (msg.v) {
+    if (Number.isFinite(msg.rate) && msg.rate > 0 && msg.rate <= 16) q.set('rate', String(msg.rate));
+    for (const key of ['advancing', 'ad']) if (typeof msg[key] === 'boolean') q.set(key, String(msg[key]));
+  }
   if (msg.v && Array.isArray(msg.queue)) q.set('queue', JSON.stringify(msg.queue.slice(0, 10)));
   const r = msg.rect;
   if (r && [r.fx, r.fy, r.fw, r.fh, r.ar].every(Number.isFinite)) {

@@ -910,7 +910,7 @@ W.shortcuts = {
       return {};
     }
     const cols = Math.min(8, Math.max(1, o.columns || 4));
-    const grid = h('div', 'deck-grid', ...list.map(keyButton));
+    const grid = h('div', 'deck-grid', ...list.map((s) => keyButton(s, { themed: true })));
     grid.style.gridTemplateColumns = `repeat(${Math.min(cols, list.length)}, 1fr)`;
     grid.style.gridTemplateRows = `repeat(${Math.ceil(list.length / cols)}, 1fr)`;
     box.append(grid);

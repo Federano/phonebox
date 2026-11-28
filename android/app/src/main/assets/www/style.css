@@ -563,6 +563,19 @@ html.beat-3 .sess.busy .st, html.beat-4 .sess.shell .st, html.beat-2 .sess.waiti
 
 /* ---------- shortcuts & big button ---------- */
 .w-shortcuts { background: none; border: 0; }
+/* Approved shortcut proposal: neutral surfaces follow the selected theme; custom uploads and actions stay intact. */
+.w-shortcuts .key { background: var(--card); border-color: var(--line); gap: 14px; }
+.w-shortcuts .key .k-icon { color: var(--k, var(--text)); }
+.w-shortcuts .key .k-icon svg { display: block; width: clamp(22px, 7cqmin, 32px); height: clamp(22px, 7cqmin, 32px); }
+.w-shortcuts .key .k-label { color: var(--text); white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }
+.w-shortcuts .key:hover { border-color: var(--k, var(--line)); background: var(--card-hi); }
+body[data-ftheme="01"] .w-shortcuts .key { background: #09090c; border-color: #242428; border-radius: 15px; }
+body[data-ftheme="01"] .w-shortcuts .key .k-icon { color: #d9d8de; }
+body[data-ftheme="01"] .w-shortcuts .key .k-label { color: #eeeef2; font-weight: 400; }
+body[data-ftheme="01"] .w-shortcuts .key:hover,
+body[data-ftheme="01"] .w-shortcuts .key:active { background: #151013; border-color: #ff2a4f; }
+body[data-ftheme="01"] .w-shortcuts .key:hover .k-icon,
+body[data-ftheme="01"] .w-shortcuts .key:active .k-icon { color: #ff2a4f; }
 .deck-grid { height: 100%; display: grid; gap: 8px; }
 .key {
   position: relative; min-width: 0; min-height: 0; width: 100%; height: 100%;

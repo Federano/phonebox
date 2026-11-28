@@ -204,4 +204,93 @@ public class VideoLyricsTests
         Assert.All(answers, words => Assert.True(words.Found));
         Assert.Single(handler.Requests);
     }
+
+    [Theory]
+    [InlineData("Artist - Song (feat. Guest)")]
+    [InlineData("Artist - Song [featuring Guest]")]
+    public async Task FeaturedGuestInTheTrackNameDoesNotHideTheBaseSong(string title)
+    {
+        var handler = new Handler(uri => Uri.UnescapeDataString(uri.Query).Contains("track_name=Song&artist_name=Artist")
+            ? Json(Hit("Song", "Artist feat. Guest")) : Json());
+        var words = await Service(handler).GetVideoAsync(title, "Artist", 200000);
+        Assert.True(words.Found);
+        Assert.Equal(2, words.Lines.Count);
+        Assert.Single(handler.Requests);
+    }
+
+    [Fact]
+    public async Task TheVideoSpecificEntryStillWinsWhenTheTitleHasOfficialVideoDecoration()
+    {
+        var handler = new Handler(_ => Json(Hit("Song", "Artist", synced: "[00:01.00] Linha fictícia"),
+            Hit("Artist - Song", "Artist", synced: "[00:20.00] Linha fictícia")));
+        var words = await Service(handler).GetVideoAsync("Artist - Song (Official Video) | Sessions", "Artist", 200000);
+        Assert.Equal(20000, Assert.Single(words.Lines).T);
+    }
+
+    [Fact]
+    public async Task LiveVideoDoesNotBorrowStudioTimingEvenWhenItsLengthMatches()
+    {
+        var handler = new Handler(_ => Json(Hit("Song", "Artist")));
+        var words = await Service(handler).GetVideoAsync("Artist - Song (Ao Vivo)", "Artist", 200000);
+        Assert.True(words.Found);
+        Assert.Empty(words.Lines);
+        Assert.NotEmpty(words.Plain);
+    }
+
+    [Fact]
+    public async Task LiveVideoPrefersQualifiedLyricsOverEqualLengthStudioLyrics()
+    {
+        var handler = new Handler(_ => Json(Hit("Song", "Artist", synced: "[00:01.00] Linha fictícia"),
+            Hit("Song (Live)", "Artist", synced: "[00:18.00] Linha fictícia")));
+        var words = await Service(handler).GetVideoAsync("Artist - Song (Ao Vivo)", "Artist", 200000);
+        Assert.Equal(18000, Assert.Single(words.Lines).T);
+    }
+
+    [Fact]
+    public async Task AcousticVideoCanUseBaseWordsWithoutBorrowingTheStudioTiming()
+    {
+        var handler = new Handler(uri => Uri.UnescapeDataString(uri.Query).Contains("track_name=Song&artist_name=Artist")
+            ? Json(Hit("Song", "Artist")) : Json());
+        var words = await Service(handler).GetVideoAsync("Artist - Song (Acústico)", "Artist", 200000);
+        Assert.True(words.Found);
+        Assert.Empty(words.Lines);
+        Assert.NotEmpty(words.Plain);
+    }
+
+    [Fact]
+    public async Task StudioVideoDoesNotAcceptLyricsFromANamedLiveRecording()
+    {
+        var handler = new Handler(_ => Json(Hit("Song (Live)", "Artist")));
+        Assert.False((await Service(handler).GetVideoAsync("Artist - Song", "Artist", 200000)).Found);
+    }
+
+    [Fact]
+    public async Task MalformedSyncedMetadataDoesNotHideAValidPlainResult()
+    {
+        var handler = new Handler(_ => Json(Hit("Song", "Artist", plain: "", synced: "[ar:Artist]\n[ti:Song]"),
+            Hit("Song", "Artist", plain: "Texto fictício disponível", synced: "")));
+        var words = await Service(handler).GetVideoAsync("Artist - Song", "Artist", 200000);
+        Assert.True(words.Found);
+        Assert.Empty(words.Lines);
+        Assert.Equal("Texto fictício disponível", words.Plain);
+    }
+
+    [Fact]
+    public async Task EmptyTimestampLinesAreNotSuccessfulLyrics()
+    {
+        var handler = new Handler(_ => Json(Hit("Song", "Artist", plain: "", synced: "[00:01.00] \n[00:10.00]")));
+        Assert.False((await Service(handler).GetVideoAsync("Artist - Song", "Artist", 200000)).Found);
+    }
+
+    [Fact]
+    public async Task MissingRecordingDurationDoesNotAuthorizeTimedLyrics()
+    {
+        var hit = Hit("Song", "Artist");
+        hit["duration"] = null;
+        var handler = new Handler(_ => Json(hit));
+        var words = await Service(handler).GetVideoAsync("Artist - Song", "Artist", 200000);
+        Assert.True(words.Found);
+        Assert.Empty(words.Lines);
+        Assert.NotEmpty(words.Plain);
+    }
 }

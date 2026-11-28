@@ -32,11 +32,11 @@
   }
 
   // the biggest video on the page, playing ones first
-  function mainVideo() {
+  function mainVideo(minReady = 2) {
     let best = null, bestScore = 0;
     for (const v of document.querySelectorAll('video')) {
       const w = v.videoWidth || v.clientWidth, h = v.videoHeight || v.clientHeight;
-      if (w * h < 20000 || v.readyState < 2) continue;
+      if (w * h < 20000 || v.readyState < minReady) continue;
       const score = w * h * (v.paused ? 1 : 10);
       if (score > bestScore) { best = v; bestScore = score; }
     }
@@ -45,22 +45,31 @@
 
   let mirroring = false;
   let port = null;
+  const waiting = new WeakSet();
 
   function report() {
-    const v = mainVideo();
+    // A buffering player may temporarily have no decoded frame, but must still stop the lyric clock.
+    const v = mainVideo(0);
     if (!v) { if (mirroring) stopMirror(); return; }
     const id = onYouTube ? youTubeId() : null;
+    // During YouTube's in-page navigation the URL changes before the old player is replaced.
+    const pageId = onYouTube && location.pathname === '/watch'
+      ? document.querySelector('ytd-watch-flexy[video-id]')?.getAttribute('video-id') : null;
+    if (pageId && pageId !== id) return;
     if (v.paused && !id && !mirroring) return;
-    const msg = { type: 'federano-video', playing: !v.paused, rect: videoRect(v) };
+    const msg = { type: 'federano-video', playing: !v.paused && !v.ended, rect: videoRect(v) };
     if (id && /^[A-Za-z0-9_-]{11}$/.test(id)) {
-      msg.v = id; msg.t = Math.max(0, v.currentTime || 0);
+      msg.v = id; msg.t = Number.isFinite(v.currentTime) ? Math.max(0, v.currentTime) : 0;
+      msg.rate = Number.isFinite(v.playbackRate) && v.playbackRate > 0 ? v.playbackRate : 1;
+      msg.ad = !!document.querySelector('#movie_player.ad-showing, #movie_player.ad-interrupting, .html5-video-player.ad-showing, .html5-video-player.ad-interrupting');
+      msg.advancing = msg.playing && v.playbackRate > 0 && !v.seeking && !waiting.has(v) && v.readyState >= 3 && !msg.ad;
       msg.title = (document.title || '').replace(/^\(\d+\)\s*/, '').replace(/\s*-\s*YouTube$/, '');
       const next = playlistNext();
       if (next) msg.queue = next;
     }
     try {
       chrome.runtime.sendMessage(msg, (answer) => {
-        if (chrome.runtime.lastError || !answer) return;
+        if (chrome.runtime.lastError || !answer || (id && id !== youTubeId()) || v !== mainVideo(0)) return;
         if (answer.pause && !v.paused) v.pause();
         if (answer.play) playFromList(answer.play);
         if (answer.mirror && !mirroring) begin();
@@ -192,5 +201,15 @@
   setInterval(report, 1000);
   // the next video in the same tab may be a new <video> element: follow it
   setInterval(() => { if (mirroring && reader && readerVideo && mainVideo() !== readerVideo) { const r = reader; reader = null; try { r.cancel(); } catch (_) {} if (!startFramePipe()) timer = timer || setInterval(sendFrame, Math.round(1000 / FPS)); } }, 1000);
-  for (const e of ['play', 'pause', 'loadeddata']) document.addEventListener(e, report, true);
+  for (const e of ['play', 'playing', 'pause', 'waiting', 'seeking', 'seeked', 'ratechange', 'ended', 'emptied', 'loadedmetadata', 'loadeddata']) {
+    document.addEventListener(e, (event) => {
+      const v = event.target;
+      if (v?.tagName === 'VIDEO') {
+        if (e === 'waiting') waiting.add(v);
+        else if (e === 'playing' || e === 'loadeddata' || e === 'emptied') waiting.delete(v);
+      }
+      report();
+    }, true);
+  }
+  document.addEventListener('yt-navigate-finish', report, true);
 })();

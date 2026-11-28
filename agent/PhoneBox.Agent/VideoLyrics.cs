@@ -9,7 +9,9 @@ namespace PhoneBox.Agent;
 
 public sealed partial class LyricsService
 {
-    private sealed record VideoSong(string Song, string Artist, bool Original = false);
+    private sealed record VideoSong(string Song, string Artist, bool Original = false, string Recording = "");
+    private sealed record VideoHit(string Name, string Artist, double Seconds, IReadOnlyList<Line> Lines,
+        string Plain, bool Instrumental, string Recording);
     private sealed record VideoCache(Result Words, DateTimeOffset Expires);
     private readonly ConcurrentDictionary<string, Lazy<Task<VideoCache>>> _videoCache = new();
     private readonly HttpClient _videoHttp = Http;
@@ -28,14 +30,24 @@ public sealed partial class LyricsService
 
     private static string VideoArtist(string text) => Regex.Split(
         Regex.Replace(text, @"\s*-\s*Topic$|VEVO$|\s+Oficial$|\s+Official$", "", RegexOptions.IgnoreCase),
-        @"\s+(?:ft\.?|feat\.?|part\.?|x|&)\s+|[,;]\s*", RegexOptions.IgnoreCase)[0].Trim(' ', '"', '\'', '“', '”');
+        @"\s+(?:ft\.?|feat\.?|featuring|part\.?|x|&)\s+|[,;]\s*", RegexOptions.IgnoreCase)[0].Trim(' ', '"', '\'', '“', '”');
 
     private static string VideoDecorations(string text)
     {
         var clean = Regex.Replace(text,
-            @"\s+[\(\[]\s*(?:official|oficial|clipe|v[ií]deo|lyric|letra|prod\.?|ao vivo|live|hd\b|4k\b)[^\)\]]*[\)\]]",
+            @"\s+[\(\[]\s*(?:official|oficial|clipe|v[ií]deo|lyric|letra|prod\.?|ao vivo|live|ac[uú]stic[oa]?\b|acoustic\b|ft\.?\s|feat\.?\s|featuring\s|part\.?\s|hd\b|4k\b)[^\)\]]*[\)\]]",
             "", RegexOptions.IgnoreCase).Trim(' ', '"', '\'', '“', '”');
         return Regex.Replace(clean, @"\s*[♪♫♬♩]+\s*$", "").Trim();
+    }
+
+    // A live/acoustic suffix may be omitted for searching the words, but it is not evidence that studio timestamps fit.
+    private static string VideoRecording(string text)
+    {
+        var versions = Regex.Matches(text, @"[\(\[]\s*(?:ao vivo|live|ac[uú]stic[oa]?\b|acoustic\b)[^\)\]]*[\)\]]", RegexOptions.IgnoreCase)
+            .Select(match => match.Value).ToArray();
+        var live = versions.Any(value => Regex.IsMatch(value, @"\bao vivo\b|\blive\b", RegexOptions.IgnoreCase));
+        var acoustic = versions.Any(value => Regex.IsMatch(value, @"\bac[uú]stic[oa]?\b|\bacoustic\b", RegexOptions.IgnoreCase));
+        return (live, acoustic) switch { (true, true) => "live+acoustic", (true, false) => "live", (false, true) => "acoustic", _ => "" };
     }
 
     private static string VideoName(string text)
@@ -55,13 +67,20 @@ public sealed partial class LyricsService
         return VideoName(VideoDecorations(name));
     }
 
-    private static List<VideoSong> VideoCandidates(string title, string channel)
+    private static string VideoTitle(string title)
     {
         var text = WebUtility.HtmlDecode(title).Trim();
         text = Regex.Replace(text, @"\s+-\s+YouTube$", "", RegexOptions.IgnoreCase);
         // A session/channel name after a pipe is branding, not part of the song or performer.
         var parts = Regex.Split(text, @"\s+\|\s+");
         if (parts.Length > 1 && Regex.IsMatch(parts[0], @"\s+[-–—]\s+")) text = parts[0];
+        return text;
+    }
+
+    private static List<VideoSong> VideoCandidates(string title, string channel)
+    {
+        var text = VideoTitle(title);
+        var recording = VideoRecording(text);
         var dash = Regex.Match(text, @"\s+[-–—|]\s+");
         var candidates = new List<VideoSong>();
         void Add(string song, string artist, bool original = false)
@@ -69,7 +88,7 @@ public sealed partial class LyricsService
             song = VideoDecorations(song); artist = VideoArtist(artist);
             if (song.Length > 0 && artist.Length > 0 && !candidates.Any(c =>
                 VideoName(c.Song) == VideoName(song) && VideoName(c.Artist) == VideoName(artist)))
-                candidates.Add(new(song, artist, original));
+                candidates.Add(new(song, artist, original, recording));
         }
         if (dash.Success)
         {
@@ -94,7 +113,7 @@ public sealed partial class LyricsService
         }
         else Add(VideoDecorations(text), channel);
         // Empty artist metadata is allowed, but never guess a random artist from a common song title.
-        if (candidates.Count == 0) candidates.Add(new(VideoDecorations(text), VideoArtist(channel)));
+        if (candidates.Count == 0) candidates.Add(new(VideoDecorations(text), VideoArtist(channel), Recording: recording));
         return candidates;
     }
 
@@ -125,6 +144,26 @@ public sealed partial class LyricsService
         Lines = []
     };
 
+    private static VideoHit? ReadVideoHit(JsonNode? node)
+    {
+        if (node is not JsonObject hit) return null;
+        string Text(string field) => hit[field] is JsonValue value && value.TryGetValue<string>(out var text) ? text : "";
+        var name = Text("trackName");
+        var artist = Text("artistName");
+        if (name.Length == 0 || artist.Length == 0) return null;
+        var plain = Text("plainLyrics");
+        var instrumental = hit["instrumental"] is JsonValue flag && flag.TryGetValue<bool>(out var yes) && yes;
+        var seconds = hit["duration"] is JsonValue duration && duration.TryGetValue<double>(out var number) &&
+            double.IsFinite(number) && number > 0 ? number : 0;
+        IReadOnlyList<Line> lines;
+        try { lines = ParseLrc(Text("syncedLyrics")); }
+        catch (Exception ex) when (ex is FormatException or OverflowException) { lines = []; }
+        // Metadata-only/blank LRC is not a successful result. Keep useful plain text, and continue to another hit otherwise.
+        if (!lines.Any(line => !string.IsNullOrWhiteSpace(line.Text))) lines = [];
+        if (!instrumental && lines.Count == 0 && string.IsNullOrWhiteSpace(plain)) return null;
+        return new(name, artist, seconds, lines, plain, instrumental, VideoRecording(name));
+    }
+
     private async Task<VideoCache> FetchVideoAsync(string key, string title, string channel, long durationMs)
     {
         VideoCache Missing(TimeSpan retry) => new(new(key, [], "", false, false), _videoClock.GetUtcNow() + retry);
@@ -146,25 +185,26 @@ public sealed partial class LyricsService
                 }
                 response.EnsureSuccessStatusCode();
                 var hits = JsonNode.Parse(await response.Content.ReadAsStringAsync()) as JsonArray;
-                var hit = hits?.Where(x => x is not null &&
-                    VideoTrackName(x["trackName"]?.GetValue<string>() ?? "", candidate.Artist) == VideoName(candidate.Song) &&
-                    VideoName(VideoArtist(x["artistName"]?.GetValue<string>() ?? "")) == VideoName(candidate.Artist) &&
-                    (!string.IsNullOrWhiteSpace(x["plainLyrics"]?.GetValue<string>()) ||
-                     !string.IsNullOrWhiteSpace(x["syncedLyrics"]?.GetValue<string>()) || x["instrumental"]?.GetValue<bool>() == true))
-                    .OrderBy(x => !candidate.Original && durationMs > 0 ? Math.Abs((x!["duration"]?.GetValue<double>() ?? 0) * 1000 - durationMs) : 0)
+                var hit = hits?.Select(ReadVideoHit).OfType<VideoHit>().Where(x =>
+                    VideoTrackName(x.Name, candidate.Artist) == VideoName(candidate.Song) &&
+                    VideoName(VideoArtist(x.Artist)) == VideoName(candidate.Artist) &&
+                    (x.Recording == candidate.Recording || candidate.Recording.Length > 0 && x.Recording.Length == 0))
+                    .OrderByDescending(x => x.Recording == candidate.Recording)
+                    .ThenBy(x => !candidate.Original && durationMs > 0 ? Math.Abs(x.Seconds * 1000 - durationMs) : 0)
                     // Some video-specific entries include the performer in trackName. Prefer that exact video title
                     // over an album LRC copied to a record with the video's duration but without its introduction.
-                    .ThenByDescending(x => VideoName(x!["trackName"]?.GetValue<string>() ?? "") == VideoName(title))
-                    .ThenByDescending(x => !string.IsNullOrWhiteSpace(x!["syncedLyrics"]?.GetValue<string>()))
+                    .ThenByDescending(x => VideoName(VideoDecorations(x.Name)) == VideoName(VideoDecorations(VideoTitle(title))))
+                    .ThenByDescending(x => x.Lines.Count > 0)
                     .FirstOrDefault();
                 if (hit is null) continue;
-                var lines = ParseLrc(hit["syncedLyrics"]?.GetValue<string>() ?? "");
-                var plain = hit["plainLyrics"]?.GetValue<string>() ?? "";
-                var instrumental = hit["instrumental"]?.GetValue<bool>() == true;
+                var lines = hit.Lines;
+                var plain = hit.Plain;
+                var instrumental = hit.Instrumental;
                 var texts = lines.Count > 0 ? lines.Select(l => l.Text).ToList() : plain.Split('\n').Select(t => t.Trim()).ToList();
                 var (trans, lang) = instrumental ? (null, "") : await (_videoTranslate?.Invoke(texts) ?? TranslateAsync(texts));
-                var words = new Result(key, lines, plain, instrumental, true, trans, lang, hit["duration"]?.GetValue<double>() ?? 0);
-                return new(candidate.Original ? VideoPlain(words) : words, _videoClock.GetUtcNow() + TimeSpan.FromHours(6));
+                var words = new Result(key, lines, plain, instrumental, true, trans, lang, hit.Seconds);
+                var plainOnly = candidate.Original || hit.Recording != candidate.Recording || hit.Seconds <= 0;
+                return new(plainOnly ? VideoPlain(words) : words, _videoClock.GetUtcNow() + TimeSpan.FromHours(6));
             }
             return Missing(TimeSpan.FromMinutes(5));
         }

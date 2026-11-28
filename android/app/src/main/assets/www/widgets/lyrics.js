@@ -371,22 +371,30 @@ W.lyrics = {
     if (reducedMotion.addEventListener) reducedMotion.addEventListener('change', syncCinema);
     else reducedMotion.addListener(syncCinema);
     // offset: how far Windows' position runs behind the player's own clock (the agent measures it for Spotify)
-    let offset = 0, clockSource = 'system';
-    const pos = () => !m ? 0 : Math.min(m.durMs || Infinity, m.posMs + (m.playing ? (m.ageMs || 0) + performance.now() - at + offset : 0));
+    let offset = 0, clockSource = 'system', clockRate = 1, clockAdvancing = true, clockAd = false;
+    const pos = () => {
+      if (!m) return 0;
+      const advancing = m.playing && (clockSource !== 'youtube' || clockAdvancing);
+      const elapsed = advancing ? ((m.ageMs || 0) + performance.now() - at) * (clockSource === 'youtube' ? clockRate : 1) + offset : 0;
+      return Math.max(0, Math.min(m.durMs || Infinity, m.posMs + elapsed));
+    };
 
     // ---- controls: the PC's player through the media API (same as the media widget and the mirror)
     let holdUntil = 0;
     async function media(action, q = '', optimistic) {
       haptic();
       holdUntil = Date.now() + 1200;
+      // A response already in flight contains the position from before this control was used.
+      pollVersion++; pollController?.abort(); clearTimeout(timer);
       if (optimistic) optimistic();
       try {
         const r = await fetch(`${API}/media/${action}${q}`, { method: 'POST', cache: 'no-store', headers: PANEL_HEADERS });
-        if (!r.ok) { toast(action.startsWith('seek') ? 'Esse player não deixa pular pelo Windows.' : 'O player do PC não respondeu.', 'err'); return; }
+        if (!r.ok) { timer = setTimeout(poll, 250); toast(action.startsWith('seek') ? 'Esse player não deixa pular pelo Windows.' : 'O player do PC não respondeu.', 'err'); return; }
         const j = await r.json();
-        if (j.media && m) { m = { ...m, ...j.media }; at = performance.now(); showPlay(); active = -2; draw(); }
+        // Windows answers media controls with its own clock. YouTube's next report is authoritative.
+        if (j.media && m && clockSource !== 'youtube') { m = { ...m, ...j.media }; at = performance.now(); showPlay(); active = -2; draw(); }
       } catch (_) { toast('Sem conexão com o PC.', 'err'); }
-      if (action === 'next' || action === 'prev') setTimeout(() => { clearTimeout(timer); poll(); }, 250);
+      clearTimeout(timer); timer = setTimeout(poll, clockSource === 'youtube' || action === 'next' || action === 'prev' ? 250 : 1000);
     }
     const showPlay = () => {
       bPlay.innerHTML = m && m.playing ? SVG.pause : SVG.play;
@@ -582,6 +590,10 @@ W.lyrics = {
     }
     function lineCheck() {
       if (!m || !lines.length) return;
+      if (clockSource === 'youtube' && clockAd) {
+        if (active !== -2) { lines.forEach((l) => l.el.classList.remove('on', 'past')); active = -2; }
+        return;
+      }
       const p = pos();
       let i = -1;
       for (let k = 0; k < lines.length; k++) { if (lines[k].t <= p + LEAD) i = k; else break; }
@@ -600,16 +612,22 @@ W.lyrics = {
       const y = el.offsetTop + (el.offsetParent === inner ? inner.offsetTop : 0);
       glide(Math.max(0, Math.min(list.scrollHeight - list.clientHeight, y + el.offsetHeight / 2 - list.clientHeight / 2)));
     }
-    let quietSince = 0;
+    let quietSince = 0, pollVersion = 0, pollController = null;
     async function poll() {
       if (!alive) return;
+      clearTimeout(timer);
+      const version = ++pollVersion;
+      pollController?.abort(); pollController = null;
       if (visible() || !key) {
+        const controller = pollController = new AbortController();
         try {
           const listen = (() => { try { return localStorage.getItem('federano.listenVideo') === '1'; } catch (_) { return false; } })();
           // A failed video lookup must be checked again after the agent's retry cache expires.
           const have = listen && !vidWords?.found ? '' : key;
-          const r = await fetch(`${API}/lyrics/now?have=${encodeURIComponent(have)}${listen ? '&any=true' : ''}`, { cache: 'no-store', headers: PANEL_HEADERS });
+          const r = await fetch(`${API}/lyrics/now?have=${encodeURIComponent(have)}${listen ? '&any=true' : ''}`, { cache: 'no-store', headers: PANEL_HEADERS, signal: controller.signal });
+          if (!r.ok) throw new Error('Lyrics unavailable');
           const j = await r.json();
+          if (!alive || version !== pollVersion) return;
           // "Só ouvir" ends when Spotify takes over or nothing has played for a minute (the gap between two clips of a
           // YouTube playlist does not end it, so the next clip is not offered again)
           if (j.playing) quietSince = 0; else if (!quietSince) quietSince = Date.now();
@@ -623,6 +641,9 @@ W.lyrics = {
             box.classList.remove('ly-idle');
             m = j.media; at = performance.now();
             clockSource = j.clockSource || 'system';
+            clockRate = Number.isFinite(j.clockRate) && j.clockRate > 0 && j.clockRate <= 16 ? j.clockRate : 1;
+            clockAdvancing = typeof j.clockAdvancing === 'boolean' ? j.clockAdvancing : !!m.playing;
+            clockAd = j.clockAd === true;
             offset = Number(j.posOffsetMs) || 0;
             lastArtistPending = !!j.artistPending;
             if (title.textContent !== m.title) { const meta = title.parentElement; meta.classList.remove('ly-swap'); void meta.offsetWidth; meta.classList.add('ly-swap'); }
@@ -660,7 +681,7 @@ W.lyrics = {
               // a video whose lyrics are still on their way keeps asking for them (no key yet)
               if (j.key !== key && !(j.kind === 'video' && j.pending)) { key = j.key; pendingKey = ''; inner.replaceChildren(); lines = []; active = -2; trBtn.hidden = true; note.textContent = ''; box.classList.remove('ly-plain', 'ly-none'); }
               draw();
-              timer = setTimeout(poll, !visible() ? 8000 : j.kind === 'video' ? 1500 : 4000);   // a video playlist changes clips often
+              timer = setTimeout(poll, !visible() ? 8000 : j.kind === 'video' ? 1000 : 4000);   // a video playlist changes clips often
               return;
             }
             setPod(false);
@@ -681,7 +702,8 @@ W.lyrics = {
           }
         } catch (_) {}
       }
-      timer = setTimeout(poll, pendingKey || lastArtistPending ? 400 : visible() ? 4000 : 8000);
+      if (!alive || version !== pollVersion) return;
+      timer = setTimeout(poll, pendingKey || lastArtistPending ? 400 : !visible() ? 8000 : clockSource === 'youtube' ? 1000 : 4000);
     }
     // the shared media state streamed by the agent (pokes on every change): title, play/pause and position follow it at
     // once; a new song asks for its lyrics right away instead of waiting for the next poll
@@ -717,7 +739,7 @@ W.lyrics = {
     return {
       update() {},
       destroy() {
-        alive = false; artVersion++; img.onload = null; img.onerror = null; artLayers.forEach((layer) => layer.removeAttribute('src')); syncCinema();
+        alive = false; pollVersion++; pollController?.abort(); artVersion++; img.onload = null; img.onerror = null; artLayers.forEach((layer) => layer.removeAttribute('src')); syncCinema();
         clearTimeout(timer); clearInterval(ticker); cancelAnimationFrame(raf);
         window.removeEventListener('federano-theme', themeChanged); window.removeEventListener('federano-listen', listenNow); document.removeEventListener('visibilitychange', syncCinema);
         if (reducedMotion.removeEventListener) reducedMotion.removeEventListener('change', syncCinema); else reducedMotion.removeListener(syncCinema);
